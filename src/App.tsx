@@ -1,6 +1,8 @@
-import { SharkWorkbench } from './components/workspace/SharkWorkbench';
+import '@fontsource-variable/geist';
+import '@fontsource-variable/geist-mono';
 import './App.css';
+import { Workbench } from './components/workbench/Workbench';
 
 export default function App() {
-  return <SharkWorkbench />;
+  return <Workbench />;
 }

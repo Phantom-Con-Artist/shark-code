@@ -54,9 +54,9 @@ class AdkTests(unittest.TestCase):
 
     def wait_finished(self, host, timeout=20):
         end = time.monotonic() + timeout
-        while host.active is not None and time.monotonic() < end:
+        while host.active and time.monotonic() < end:
             time.sleep(0.02)
-        self.assertIsNone(host.active, self.service.store.events(self.task['id']))
+        self.assertFalse(host.active, self.service.store.events(self.task['id']))
 
     def test_real_adk_tools_persist_session_and_review_without_writing_source(self):
         self.task = self.service.execute('task/create', {'goal': 'Change add arithmetic'})

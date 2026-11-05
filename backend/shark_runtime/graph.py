@@ -85,7 +85,7 @@ class Graph:
                 request = {"root": str(root), "files": [f["path"] for f in snapshot["files"]], "cache": str(self.directory)}
                 with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as diagnostics:
                     try:
-                        process = subprocess.run([sys.executable, "-m", "shark_runtime.graph_worker"],
+                        process = subprocess.run([sys.executable, "--graph-worker"] if getattr(sys, "frozen", False) else [sys.executable, "-m", "shark_runtime.graph_worker"],
                             input=json.dumps(request).encode(), stdout=output, stderr=diagnostics, timeout=120)
                     except subprocess.TimeoutExpired as exc:
                         raise Fault("index_timeout", "Graphify exceeded the 120-second indexing limit") from exc

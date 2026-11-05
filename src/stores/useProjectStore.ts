@@ -3,6 +3,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 
 export type ProjectEntry = { path: string; directory: boolean };
 export type OpenFile = { path: string; content: string; saved: string };
+export type SearchHit = { path: string; line: number; text: string };
 type DirectoryHandle = { name: string; kind: string; values(): AsyncIterable<DirectoryHandle & { getFile(): Promise<File> }>; getDirectoryHandle(name: string, options?: { create: boolean }): Promise<DirectoryHandle>; getFileHandle(name: string, options?: { create: boolean }): Promise<{ getFile(): Promise<File>; createWritable(): Promise<{ write(content: string): Promise<void>; close(): Promise<void> }> }> };
 const source = import.meta.glob(['/src/**/*.{ts,tsx,css}', '/src-tauri/src/*.rs', '/package.json', '/README.md', '/index.html'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 const initial = Object.fromEntries(Object.entries(source).map(([path, content]) => [path.slice(1), content]));
@@ -38,7 +39,9 @@ async function scanFolder(base: DirectoryHandle, prefix = '', depth = 0): Promis
 interface ProjectState {
   refreshFromDisk(paths: string[]): Promise<void>;
   name: string; root: string; kind: 'browser' | 'folder' | 'native'; entries: ProjectEntry[]; tabs: OpenFile[]; activePath: string; error: string; notice: string; busy: boolean;
-  initialize(): Promise<void>; openFolder(path?: string): Promise<void>; openFile(path: string): Promise<void>; edit(path: string, content: string): void; save(path: string): Promise<void>; createFile(path: string): Promise<void>; closeFile(path: string): void; reloadFile(path: string): Promise<void>; clearError(): void;
+  initialize(): Promise<void>; openFolder(path?: string): Promise<void>; openFile(path: string): Promise<void>; edit(path: string, content: string): void; save(path: string): Promise<void>; createFile(path: string): Promise<void>; closeFile(path: string, force?: boolean): void; reloadFile(path: string): Promise<void>; clearError(): void;
+  history: string[]; historyIndex: number; navigating: boolean; navigate(delta: -1 | 1): Promise<void>;
+  refresh(): Promise<void>; searchText(query: string): Promise<SearchHit[]>; readText(path: string): Promise<string | null>;
 }
 export const useProjectStore = create<ProjectState>((set, get) => ({
   refreshFromDisk: async paths => {
@@ -57,12 +60,19 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }
     } catch (e) { if (get().root === root) set({ error: `Proposal applied, but refreshing the editor failed: ${e instanceof Error ? e.message : String(e)}` }); }
   },
+  history: [], historyIndex: -1, navigating: false,
+  navigate: async delta => {
+    const { history, historyIndex } = get(); const next = historyIndex + delta;
+    if (next < 0 || next >= history.length) return;
+    set({ historyIndex: next, navigating: true });
+    await get().openFile(history[next]);
+    set({ navigating: false });
+  },
   name: 'shark-code', root: 'Browser workspace', kind: 'browser', entries: entriesFor(browserFiles()), tabs: [], activePath: '', error: '', notice: '', busy: false,
   initialize: () => {
     if (initialization) return initialization;
     initialization = (async () => {
       if (isTauri()) await get().openFolder();
-      await get().openFile('src/App.tsx');
     })();
     return initialization;
   },
@@ -85,13 +95,15 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     finally { set({ busy: false }); }
   },
   openFile: async path => {
-    if (get().tabs.some(t => t.path === path)) { set({ activePath: path }); return; }
+    const record = () => { const st = get(); if (st.navigating || st.history[st.historyIndex] === path) return; const history = [...st.history.slice(0, st.historyIndex + 1), path].slice(-50); set({ history, historyIndex: history.length - 1 }); };
+    if (get().tabs.some(t => t.path === path)) { set({ activePath: path }); record(); return; }
     set({ error: '' });
     try {
       const content = get().kind === 'native' ? await invoke<string>('workspace_read', { path }) : get().kind === 'folder' ? await (await (await diskHandle(path)).getFile()).text() : browserFiles()[path];
       if (content === undefined) throw new Error('File could not be found.');
       if (content.length > 2 * 1024 * 1024 || content.includes('\0')) throw new Error('Open a text file smaller than 2 MB.');
       set(s => ({ tabs: [...s.tabs.filter(t => t.path !== path), { path, content, saved: content }], activePath: path }));
+      record();
     } catch (e) { set({ error: String(e) }); }
   },
   edit: (path, content) => set(s => ({ tabs: s.tabs.map(t => t.path === path ? { ...t, content } : t), notice: '' })),
@@ -119,7 +131,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         if (all.some(e => e.path === path)) throw new Error('That file already exists on disk.');
         const writer = await (await diskHandle(path, true)).createWritable(); await writer.close();
       } else { const all = browserFiles(); all[path] = ''; localStorage.setItem(STORAGE, JSON.stringify(all)); }
-      const nextEntries = entriesFor(Object.fromEntries([...get().entries.filter(e => !e.directory).map(e => [e.path, '']), [path, '']]));
+      const nextEntries = get().kind === 'native' ? (await invoke<{ entries: ProjectEntry[] }>('workspace_refresh', { expectedRoot: get().root })).entries : entriesFor(Object.fromEntries([...get().entries.filter(e => !e.directory).map(e => [e.path, '']), [path, '']]));
       set(s => ({ entries: nextEntries, tabs: [...s.tabs, { path, content: '', saved: '' }], activePath: path, notice: get().kind === 'browser' ? 'File created in browser workspace' : 'File created on disk', error: '' }));
     } catch (e) { set({ error: String(e) }); }
   },
@@ -129,10 +141,43 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     await get().openFile(path);
     if (get().error) set({ tabs: original });
   },
-  closeFile: path => {
+  closeFile: (path, force = false) => {
     const file = get().tabs.find(t => t.path === path);
-    if (file && file.content !== file.saved) { set({ error: 'Save this file before closing it.' }); return; }
+    if (file && file.content !== file.saved && !force) { set({ error: 'Save this file before closing it.' }); return; }
     set(s => { const tabs = s.tabs.filter(t => t.path !== path); return { tabs, activePath: s.activePath === path ? tabs[tabs.length - 1]?.path || '' : s.activePath }; });
   },
   clearError: () => set({ error: '' }),
+  readText: async path => {
+    const open = get().tabs.find(t => t.path === path); if (open) return open.content;
+    try {
+      if (get().kind === 'native') return await invoke<string>('workspace_read', { path });
+      if (get().kind === 'folder') return await (await (await diskHandle(path)).getFile()).text();
+      return browserFiles()[path] ?? null;
+    } catch { return null; }
+  },
+  refresh: async () => {
+    const { kind, root } = get();
+    try {
+      if (kind === 'native') { const project = await invoke<{ entries: ProjectEntry[] }>('workspace_refresh', { expectedRoot: root }); if (get().root === root) set({ entries: project.entries }); }
+      else if (kind === 'folder' && folder) set({ entries: await scanFolder(folder) });
+      else set({ entries: entriesFor(browserFiles()) });
+    } catch (e) { set({ error: String(e) }); }
+  },
+  searchText: async query => {
+    const needle = query.trim(); if (!needle) return [];
+    const { kind } = get();
+    if (kind === 'native') {
+      const { sharkBackend } = await import('../lib/sharkBackend');
+      const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const result = await sharkBackend.search('(?i)' + escaped, 200);
+      return result.hits.map(h => ({ path: h.path, line: h.line, text: h.text }));
+    }
+    const lower = needle.toLowerCase(); const hits: SearchHit[] = [];
+    const files: Record<string, string> = kind === 'browser' ? browserFiles() : Object.fromEntries(get().tabs.map(t => [t.path, t.content]));
+    for (const [path, content] of Object.entries(files)) {
+      const lines = content.split('\n');
+      for (let i = 0; i < lines.length && hits.length < 300; i++) if (lines[i].toLowerCase().includes(lower)) hits.push({ path, line: i + 1, text: lines[i].trim().slice(0, 240) });
+    }
+    return hits;
+  },
 }));

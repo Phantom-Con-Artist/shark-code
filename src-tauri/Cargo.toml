@@ -1,7 +1,9 @@
 [package]
 name = "shark-code"
 version = "0.1.0"
-description = "Shark Code - Agent-First Code Editor"
+description = "Shark Code: agent-first desktop code editor"
+license = "Apache-2.0"
+repository = "https://github.com/Phantom-Con-Artist/shark-code"
 authors = ["Subhradeep"]
 edition = "2024"
 

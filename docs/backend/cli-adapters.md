@@ -1,6 +1,10 @@
 # CLI-agent integration direction
 
-Status: researched integration design, not implemented. The installed Codex, Claude, Antigravity and Muse binaries were detected; authentication was not inspected and no model call was made.
+Status (November 6, 2026): **implemented** for Claude Code (`claude -p --output-format stream-json`), Codex (`codex exec --json`), Antigravity (`agy -p --output-format stream-json --mode accept-edits`) and Muse (`muse exec --json`) in `backend/shark_runtime/cli_agents.py`. API engines: Gemini and Anthropic (ADK native) and OpenRouter (ADK `LiteLlm`, `openrouter/<model>`). `effort` maps to `--effort` (Claude, agy), `--reasoning-effort` (Muse), `-c model_reasoning_effort` (Codex) and the provider thinking config for API engines. Engines emit `thinking`/`thinking_delta`, `tool_call`/`tool_result` and `text`/`text_delta` events. Binaries are also searched in common user install directories because desktop launches get a minimal PATH. `agent/models` returns `agy models`, Claude aliases or the live OpenRouter tool-capable catalogue. `scripts/engine-playground.py` runs live engines against a throwaway project. Each run copies the workspace to a temporary directory, streams the CLI's JSON events into the task log, then imports the copy's file differences as a normal versioned proposal (`task/propose`). Nothing reaches the real workspace until the person applies it. `agent/providers` reports availability; `agent/commands` lists Claude Code custom slash commands (passed through natively) and Codex prompts (expanded into the prompt). Tests use fake CLI binaries; no live CLI/model call was made.
+
+Limits: the copy excludes `.git`, `node_modules`, build outputs and symlinks, so CLIs cannot run builds that need installed dependencies inside it. A copy is not a process sandbox; the CLI's own permission mode (Claude `acceptEdits`, Codex `workspace-write`) still governs what else it can touch. The MCP bridge below is still pending.
+
+Original research notes follow.
 
 Shark should own the UI, task/event records, workspace versions, proposal review and application. A provider-neutral adapter owns each agent's process/transport and session identity. ADK remains one runtime option, rather than wrapping every other agent's reasoning loop inside ADK.
 

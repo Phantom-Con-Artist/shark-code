@@ -17,6 +17,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             tools::backend_request,
+            tools::backend_restart,
             workspace_open,
             workspace_read,
             workspace_refresh,

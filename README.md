@@ -1,209 +1,83 @@
-# 🦈 Shark Code
+<div align="center">
 
-> **The Agent-First Code Editor** — Designed from the ground up for autonomous AI coding agents, universal CLI model hookups, and zero-compromise developer ergonomics.
+<img src="public/brand/icon-256.png" width="72" alt="Shark Code" />
 
-## Backend foundation
+# Shark Code
 
-Shark's workspace runtime joins native Rust editing, Graphify code exploration and dependency-impact reports, persisted tasks, and Google ADK sessions through one API. Task proposals carry their impact evidence; host application checks that the reviewed graph and edited source versions are still current.
+A desktop code editor built around an agent. Use Claude Code, Codex, Antigravity, Muse or your own API key, review every change, then apply it.
 
-Run `npm run backend:setup` once, then `npm run backend:dev` for the JSON-lines gateway. Set backend provider credentials and pass a configured model ID to `agent/start` for model execution. Tests use the real ADK runner and Graphify extractor with an offline model. See [the runtime guide](docs/backend/runtime.md) and [native tool reference](docs/backend/README.md) for setup, protocol examples, limits and remaining work.
+[![Status: Alpha](https://img.shields.io/badge/status-alpha%20(in%20development)-orange)](#status)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+![Tauri 2](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)
+![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![Rust](https://img.shields.io/badge/Rust-core-000000?logo=rust)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)
 
-## Current workbench
+</div>
 
-Run `npm install` and `npm run dev` for the browser workspace, or `npm run backend:setup` followed by `npm run tauri dev` for the native app. `npm run build` checks TypeScript and creates the production bundle.
+![Shark conversation](docs/screenshots/conversation-dark.png)
 
-The compact workbench has a stable activity rail and file explorer, a conversation composer, a real Monaco editor, a review pane, and an integrated terminal. Ctrl/Cmd+K or P finds files and actions, Ctrl/Cmd+S saves, Ctrl/Cmd+backtick toggles the terminal, and Ctrl/Cmd+Shift+F toggles focus mode. Settings provide comfortable spacing, text size, Verdana, higher contrast and reduced motion; compact spacing is the user-selected default.
+## What it does
 
-- **Browser:** edit and save the bundled project copy in localStorage, or connect a supported browser folder. The terminal is a limited browser console. Native agent actions explain that the desktop app is required; no simulated agent runs or sample approvals are shown.
-- **Desktop:** the task view connects to the shared workspace runtime. Configure backend credentials and enter a supported model ID in Settings. Tasks and events persist, proposed edits include impact summaries, and application uses the native version/journal checks. Unsaved editor changes in affected files block application; clean editor tabs and file inventory refresh afterward.
+- **One agent, many engines.** Pick a CLI you are already signed in to (Claude Code, Codex, Antigravity `agy`, Muse) or an API key (OpenRouter, Anthropic, Gemini). They all work the same way in the UI.
+- **Review before apply.** CLI engines work in a private copy of your project. Their edits come back as a proposal with inline diffs. Nothing touches your files until you apply it.
+- **Modes.** Builder, Debugger, Adversarial review, Planner, Explain, Test writer, Refactor. Read-only modes cannot change files.
+- **Code intelligence for agents and you.** Code graph, blast radius, search and outlines. CLI engines get them live through Shark's MCP server.
+- **Editor.** Monaco with language servers for Python, Rust, Go and C/C++, plus built-in TS/JS/HTML/CSS/JSON. Markdown and HTML preview.
+- **Browser.** Preview your page, click any element to find the code that renders it, and send console errors to Shark. Headless checks run with Playwright.
+- **Git.** Status colours, stage, commit, branches, fetch, pull and push.
+- **Run state.** Context use, prompt cache, compaction, retries, quota and rate limits are shown in the chat.
+- **Profiles, plugins, light and dark themes.**
 
-Graphify is **agent-only infrastructure**. There is no user-facing graph explorer, graph query UI or Context tab. Users inspect files and understandable review evidence while agents use the graph internally.
+| Empty state | Light theme |
+| --- | --- |
+| ![Empty state](docs/screenshots/empty-state.png) | ![Light theme](docs/screenshots/conversation-light.png) |
 
-The interface is informed by VS Code, Cursor and Antigravity, with WCAG 2.2 AA as a target. Automated browser checks are supplemented by keyboard and responsive checks; full assistive-technology conformance is not claimed. See [reference research](docs/design-references.md) and [accessibility verification](docs/accessibility.md).
+## Status
 
-The current agent UI starts one task invocation at a time. In-thread follow-up steering, validation execution, broader model/CLI adapters, distributable runtime packaging and language-server semantic refactoring remain further work. Live model/provider execution requires user-configured credentials and has not been tested with billed calls.
+Alpha. It works day to day on Linux, but expect rough edges and breaking changes. See [NEXT-SESSION.md](NEXT-SESSION.md) for what is still open.
 
----
+## Run from source
 
-## 💡 The Vision
+Needs Node 20+, Rust (stable), [uv](https://docs.astral.sh/uv/) and Python 3.12.
 
-Most modern code editors were built for a human typing line-by-line, with AI bolted on as an afterthought—trapped inside a tiny chat sidebar or basic autocomplete popup.
-
-**Shark Code reverses this paradigm.** 
-
-Shark Code is built **agent-first out of the box**. The editor serves as the agent's sensory nervous system and hands:
-* **The agent can *see*:** Tracks active cursor coordinates, visible viewports, compiler diagnostics (LSP), and live web previews.
-* **The agent can *explore*:** Navigates 500,000+ line codebases in under 20ms using native Ripgrep, Tree-sitter AST queries, and private local vector search.
-* **The agent can *act safely*:** Streams multi-file proposed diffs directly into native review panes, executes commands in protected PTY sandboxes, and protects your work with 1-click Git checkpoint rollbacks.
-* **CLI agents hook in natively:** External CLI powerhouses like **Claude Code**, **OpenAI Codex**, and **Gemini CLI** plug in via the open **Agent Client Protocol (ACP)** and **Model Context Protocol (MCP)** rather than being trapped in a terminal window.
-* **100% BYOK & Private:** Bring Your Own Key (Anthropic, Gemini, OpenAI, Ollama/Local) with direct client-side API streaming and hardware-backed OS Keychain encryption. No middleman servers, no data logging.
-
----
-
-## 🏛️ System Architecture
-
-```mermaid
-flowchart TD
-    subgraph UI ["Workbench & Presentation Layer (Webview)"]
-        Monaco["Monaco Editor Engine (Tabs, Syntax, Minimap)"]
-        DiffViewer["Multi-File Diff Reviewer (Hunk Accept/Reject)"]
-        AgentPanel["Agent Hub (Thinking Stream, Tool Cards, Chat)"]
-        TerminalUI["xterm.js (Hardware-Accelerated PTY Terminal)"]
-        StateStore["Zustand Reactive State Stores"]
-    end
-
-    subgraph NativeCore ["Native Host Engine (Rust / Tauri 2.0)"]
-        IPC["Zero-Copy Typed IPC Bridge"]
-        PTYMgr["portable-pty Session Multiplexer"]
-        KeyStore["Hardware OS Keychain (keyring-rs)"]
-        FSWatcher["Filesystem Watcher & Buffer Sync"]
-    end
-
-    subgraph AgentRuntime ["Agent Orchestration & Protocol Core"]
-        ACPHost["ACP Host Engine (Agent Client Protocol)"]
-        MCPGateway["MCP Client & Server Gateway"]
-        BYOKClient["Direct Multi-Provider Streaming Client"]
-    end
-
-    subgraph CuratedTools ["Curated Agent Primitives"]
-        AST["Tree-sitter AST & Symbol Outlines"]
-        LSP["Language Server Diagnostics Loop"]
-        Search["Sub-millisecond Ripgrep Engine"]
-        GitEngine["1-Click Turn Rollback & Shadow Worktrees"]
-    end
-
-    subgraph ExternalAgents ["External CLI Agents"]
-        Claude["Claude Code (via claude --acp)"]
-        Codex["Codex / Aider CLI"]
-        GeminiCLI["Gemini CLI"]
-    end
-
-    UI <--> NativeCore
-    NativeCore <--> AgentRuntime
-    AgentRuntime <--> CuratedTools
-    AgentRuntime <--> ExternalAgents
-```
-
----
-
-## ⚡ Core Features
-
-### 1. 👁️ Sensory Perception ("See & View")
-* **Attention Tracking:** Continuously streams the active file, cursor position, selection, and open buffers into the agent's prompt context automatically.
-* **LSP Compiler Loop:** The agent listens to real-time TypeScript, Rust, or Python compiler diagnostics to automatically heal type errors and syntax mistakes.
-* **Live Web Preview:** Embedded secondary Webview capturing DOM snapshots, console logs, and visual screenshots for full-stack feedback.
-
-### 2. 🔍 High-Velocity Exploration ("Fetch & Explore")
-* **Sub-Millisecond Ripgrep:** Rust-powered regex search (`grep-searcher` + `ignore`) that scans whole repositories in <20ms while respecting `.gitignore`.
-* **Tree-sitter AST Outlines:** Instead of dumping thousands of lines into context, the agent requests structural skeletons of files (functions, classes, interfaces).
-* **Local Semantic Search:** Embedded vector search powered by CPU-friendly ONNX embeddings (`fastembed-rs` + `sqlite-vec`), enabling natural language search with zero API costs.
-
-### 3. 🛡️ Surgical Execution & Safety ("Act & Verify")
-* **Streaming Ghost Diffs:** Code proposals stream live into the editor with hunk alignment and single-click *Accept & Apply* or *Reject* controls.
-* **1-Click Checkpoint Rollbacks:** Automatically snapshots a commit-less Git reflog before every agent turn. If an agent goes down the wrong path, undo the entire turn in 50ms.
-* **Shadow Git Worktrees:** Long-running refactors run in isolated `.shark/worktrees` without disturbing your dirty working tree.
-* **Protected PTY Terminal:** Interactive `portable-pty` shell with permission shields for destructive terminal operations (`rm`, `git reset`).
-
-### 4. 🔌 Universal CLI Model Hookup (ACP & MCP)
-* **Agent Client Protocol (ACP) Host:** Zed & Anthropic's open protocol standard. Hook external CLI tools like **Claude Code** (`claude --acp`) over stdio to render native diffs and task trees.
-* **Model Context Protocol (MCP) Hub:** Exposes Shark Code's AST and diagnostics as an MCP server to external tools, and consumes external MCP tool plugins configured by the user.
-
-### 5. 🔑 100% BYOK (Bring Your Own Key)
-* Direct connections to:
-  * **Anthropic** (Claude 3.7 Sonnet with extended thinking, Claude 3.5 Sonnet / Haiku)
-  * **Google Gemini** (Gemini 2.5 Pro / Flash with 1M+ context windows)
-  * **OpenAI** (GPT-4o, o3-mini, Codex)
-  * **Ollama & Local LLMs** (DeepSeek R1, Llama 3, Qwen)
-* Encrypted via hardware OS Keychain (SecretService / GNOME Keyring / macOS Keychain / Windows Credential Manager).
-* Zero third-party proxy servers.
-
----
-
-## 🛠️ Tech Stack
-
-| Layer | Technology | Purpose |
-| :--- | :--- | :--- |
-| **Desktop Shell** | [Tauri 2.0](https://tauri.app/) | Ultra-lightweight native runner (~80MB RAM, 25MB binary) |
-| **Native Core (Rust)** | Rust 2024 Edition | High-performance PTY, search, AST, and ACP protocol handling |
-| **Terminal Engine** | [`portable-pty`](https://crates.io/crates/portable-pty) + [`@xterm/xterm`](https://xtermjs.org/) | True VT100/Xterm PTY emulation with WebGL hardware acceleration |
-| **Key Management** | [`keyring-rs`](https://crates.io/crates/keyring) | Hardware-backed OS credential storage |
-| **Search Engine** | [`ignore`](https://crates.io/crates/ignore) + [`regex`](https://crates.io/crates/regex) | Ripgrep-grade workspace indexing |
-| **Frontend Framework** | [React 19](https://react.dev/) + [Vite](https://vite.dev/) | Blazing fast reactive UI layer |
-| **Code Editor** | [Monaco Editor](https://microsoft.github.io/monaco-editor/) | Authentic VS Code editing, IntelliSense, and Diff view |
-| **Styling & Icons** | [Tailwind CSS v4](https://tailwindcss.com/) + [Lucide](https://lucide.dev/) | Clean, modern developer workbench aesthetics |
-| **State Management** | [Zustand](https://github.com/pmndrs/zustand) | Fast reactive state stores for editor, agent, and workspace |
-
----
-
-## 📂 Project Structure
-
-```
-shark-code/
-├── src-tauri/                 # Native Rust Backend (Tauri 2.0)
-│   ├── src/
-│   │   ├── main.rs            # Desktop application entry point
-│   │   └── lib.rs             # Tauri command handlers & plugin registration
-│   ├── Cargo.toml             # Rust dependencies (portable-pty, keyring, ignore)
-│   └── tauri.conf.json        # Window configuration and app permissions
-│
-├── src/                       # Frontend Workbench (React 19 + TypeScript)
-│   ├── components/
-│   │   ├── agent/             # Agent hub, thinking blocks, model picker
-│   │   ├── editor/            # Monaco editor & multi-file diff reviewer
-│   │   ├── layout/            # Activity bar & status bar
-│   │   ├── sidebar/           # File explorer, Ripgrep search, BYOK settings
-│   │   └── terminal/          # xterm.js PTY terminal emulator
-│   ├── stores/                # Zustand stores (useEditorStore, useAgentStore, etc.)
-│   ├── types/                 # Shared TypeScript models & interfaces
-│   ├── App.tsx                # Main IDE layout assembler
-│   └── main.tsx               # DOM root mount
-│
-├── package.json               # Frontend dependencies & scripts
-├── tsconfig.json              # TypeScript strict configuration
-└── vite.config.ts             # Vite build configuration & path aliases
-```
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-* **Node.js**: v20+ (tested with v24.x)
-* **Rust & Cargo**: 1.80+ (tested with 1.98.x)
-* **System Libraries (Linux)**: `webkit2gtk-4.1`, `gtk-3`, `libsoup-3.0` (standard on Fedora, Ubuntu, Arch)
-
-### Installation
-```bash
-# Clone the repository
-git clone https://github.com/your-username/shark-code.git
-cd "shark code"
-
-# Install frontend dependencies
+```sh
 npm install
+npm run backend:setup     # Python runtime + Rust core
+npm run tauri dev
 ```
 
-### Running the App
-* **Web UI Development Preview (fast browser iteration):**
-  ```bash
-  npm run dev
-  ```
-* **Full Native Desktop Application (Tauri + Webview):**
-  ```bash
-  npm run tauri dev
-  ```
+Optional tools Shark detects and uses: ripgrep, ast-grep, Semgrep, difftastic, scc, ctags, gh, lazygit, delta, pyright, rust-analyzer, gopls, clangd. Install Playwright's browser for page checks:
 
----
+```sh
+uv run --project backend playwright install chromium
+```
 
-## 🗺️ Roadmap
+## Build a release
 
-- [x] **Phase 1: Foundations** — Tauri 2.0 + React 19 + Monaco Editor + xterm.js + BYOK settings.
-- [ ] **Phase 2: Native Curated Tools** — Ripgrep workspace search, Tree-sitter AST queries, and live buffer diff streaming.
-- [ ] **Phase 3: ACP & Claude Code Link** — Full Agent Client Protocol host integration over stdio for `claude --acp`.
-- [ ] **Phase 4: Worktree Sandboxing** — Git checkpoint turn rollback and isolated `.shark/worktrees`.
-- [ ] **Phase 5: Self-Healing LSP Diagnostics** — Closed-loop error feedback directly into agent prompt turns.
+```sh
+npm run package           # builds the sidecars, then the Tauri bundle
+```
 
----
+## Tests
 
-## 📄 License
+```sh
+npm run backend:test      # Python runtime
+cargo test                # Rust core
+npx tsc --noEmit          # frontend types
+```
 
-MIT © Subhradeep
+## Layout
+
+| Path | What |
+| --- | --- |
+| `src/` | React UI (workbench, editor, chat, browser, git) |
+| `src-tauri/` | Desktop shell, window, terminal, runtime gateway |
+| `backend/shark_runtime/` | Python runtime: tasks, engines, graph, git, LSP, browser, MCP |
+| `crates/` | Rust core: file reads, search, outlines, versioned edits |
+| `docs/` | Backend and design notes |
+
+## License
+
+[Apache 2.0](LICENSE)

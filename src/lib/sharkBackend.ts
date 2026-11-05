@@ -37,6 +37,8 @@ async function request<T>(method: string, params: object = {}): Promise<T> {
   if (response.error) throw new BackendError(response.error.code, response.error.message);
   return response.result as T;
 }
+export const EXPECTED_RUNTIME = 4;
+export const restartBackend = () => invoke('backend_restart');
 export const sharkBackend = {
   capabilities: () => request<Record<string, unknown>>('capabilities'),
   list: (offset = 0, limit = 200) => request<{ files: { path: string; bytes: number }[]; total: number; next_offset: number | null; truncated: boolean }>('workspace/list', { offset, limit }),
@@ -72,12 +74,45 @@ export interface ImpactReport {
 export interface AgentTask {
   id: string; goal: string; summary?: string | null; review_notes?: string | null; status: 'created' | 'running' | 'review' | 'applied' | 'completed' | 'cancelled' | 'interrupted' | 'failed';
   proposal_id: string | null; proposal_revision: string | null; created_at: number; proposal_status?: ChangePreview['status'];
+  engine?: string; mode?: string; model?: string; group?: string | null;
 }
+export interface ProviderStatus { id: string; label: string; kind: 'byok' | 'cli'; available: boolean; env_configured?: boolean; installed?: boolean; reason?: string }
+export interface SlashCommand { name: string; provider: string; scope: string; kind: 'native' | 'prompt'; description: string; argument_hint: string; body?: string }
 export interface TaskEvent {
   sequence: number; kind: string; data: Record<string, unknown>; timestamp: number;
 }
 // Desktop and agent adapters call one workspace gateway. Tasks join exploration,
 // impact evidence and the native changeset rather than keeping parallel state.
+export type GitFile = { path: string; staged: boolean; index: string; worktree: string; status: string };
+export type GitStatus = { repo: boolean; branch: string | null; ahead?: number; behind?: number; files: GitFile[] };
+export const sharkGit = {
+  status: () => request<GitStatus>('git/status'),
+  diff: (path?: string, staged = false) => request<{ diff: string; truncated: boolean }>('git/diff', { ...(path ? { path } : {}), staged }),
+  log: (limit = 30) => request<{ commits: { hash: string; short: string; author: string; time: string; subject: string }[] }>('git/log', { limit }),
+  stage: (paths: string[]) => request<GitStatus>('git/stage', { paths }),
+  unstage: (paths: string[]) => request<GitStatus>('git/unstage', { paths }),
+  commit: (message: string) => request<{ commit: { short: string; subject: string }; status: GitStatus }>('git/commit', { message }),
+  tools: () => request<{ tools: { id: string; label: string; purpose: string; available: boolean; version: string | null; install: string; tasks: { label: string; command: string }[] }[] }>('tools/detect'),
+  branches: () => request<{ branches: { name: string; current: boolean }[] }>('git/branches'),
+  checkout: (name: string, create = false) => request<GitStatus>('git/checkout', { name, create }),
+  sync: (action: 'fetch' | 'pull' | 'push') => request<{ output: string; status: GitStatus }>('git/sync', { action }),
+  deps: () => request<{ groups: { manager: string; manifest: string; section: string; items: { name: string; version: string }[] }[] }>('deps/list'),
+};
+export interface PickedElement { url: string; selector: string; tag: string; id: string; classes: string[]; text: string; html: string; rect: { x: number; y: number; w: number; h: number } }
+export interface SourceMatch { path: string; line: number; snippet: string; score: number; matched: string[] }
+export interface PageCheck { available: boolean; error?: string; url?: string; status?: number | null; title?: string; console?: { level: string; message: string }[]; failed_requests?: { url: string; error: string }[]; screenshot?: string; text?: string }
+export const sharkBrowser = {
+  serve: (target = 'workspace') => request<{ url: string; base: string; target: string }>('browser/serve', { target }),
+  locate: (pick: PickedElement) => request<{ matches: SourceMatch[] }>('browser/locate', { pick }),
+  check: (url: string) => request<PageCheck>('browser/check', { url }),
+};
+export const sharkLsp = {
+  servers: () => request<{ servers: Record<string, string | null>; root: string }>('lsp/start', {}),
+  start: (language: string) => request<{ server: string; root: string; triggers: string[]; signature_triggers: string[] }>('lsp/start', { language }),
+  request: <T = unknown>(language: string, method: string, params: unknown, timeout?: number) => request<{ result: T }>('lsp/request', { language, method, params, ...(timeout ? { timeout } : {}) }).then(r => r.result),
+  notify: (language: string, method: string, params: unknown) => request<{ ok: boolean }>('lsp/notify', { language, method, params }),
+  poll: () => request<{ diagnostics: Record<string, { range: { start: { line: number; character: number }; end: { line: number; character: number } }; severity?: number; message: string; source?: string; code?: string | number }[]> }>('lsp/poll', {}),
+};
 export const sharkWorkspace = {
   tasks: () => request<{ tasks: AgentTask[]; has_more: boolean }>('task/list'),
   context: (query: string, limit = 10) => request<{ query: string; graph: GraphResult; next_actions: string[]; source_policy: string }>('workspace/context', { query, limit }),
@@ -91,7 +126,10 @@ export const sharkWorkspace = {
   taskContext: (id: string, query: string) => request<{ graph: GraphResult }>('task/context', { id, query }),
   propose: (id: string, changes: FileOperation[]) => request<{ task: AgentTask; proposal: ChangePreview; impact: ImpactReport }>('task/propose', { id, changes }),
   apply: (id: string) => request<{ task: AgentTask; proposal: ChangePreview; graph_refresh: string }>('task/apply', { id }),
-  events: (id: string, after = 0) => request<{ events: TaskEvent[]; next_cursor: number; has_more: boolean }>('task/events', { id, after }),
-  start: (id: string, model: string) => request<{ task_id: string; status: string }>('agent/start', { id, model }),
+  events: (id: string, after = 0, limit = 100) => request<{ events: TaskEvent[]; next_cursor: number; has_more: boolean }>('task/events', { id, after, limit }),
+  start: (id: string, run: { model: string; provider: string; api_key?: string; effort?: string; mode?: string; skills?: string[]; custom_skills?: string[]; group?: string }) => request<{ task_id: string; status: string }>('agent/start', { id, ...run }),
+  providers: () => request<{ providers: ProviderStatus[] }>('agent/providers'),
+  commands: () => request<{ commands: SlashCommand[] }>('agent/commands'),
+  models: (provider: string) => request<{ models: { id: string; label: string }[] }>('agent/models', { provider }),
   cancel: (id: string) => request<{ task_id: string; status: string }>('agent/cancel', { id }),
 };

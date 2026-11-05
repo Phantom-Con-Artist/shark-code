@@ -2,6 +2,29 @@
   "name": "shark-code",
   "private": true,
   "version": "0.1.0",
+  "description": "Agent-first desktop code editor. Drive Claude Code, Codex, Antigravity, Muse or your own API key from one workspace, with review before anything touches your files.",
+  "license": "Apache-2.0",
+  "author": "Subhradeep Sarkar",
+  "homepage": "https://github.com/Phantom-Con-Artist/shark-code#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Phantom-Con-Artist/shark-code.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Phantom-Con-Artist/shark-code/issues"
+  },
+  "keywords": [
+    "code-editor",
+    "ai-agents",
+    "tauri",
+    "claude-code",
+    "codex",
+    "mcp",
+    "lsp",
+    "monaco",
+    "developer-tools",
+    "desktop-app"
+  ],
   "type": "module",
   "scripts": {
     "backend:setup": "uv sync --project backend --locked && cargo build --bin shark-backend",
@@ -10,29 +33,25 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "build:sidecars": "bash scripts/build-sidecars.sh",
+    "package": "npm run build:sidecars && tauri build --config src-tauri/tauri.bundle.conf.json"
   },
   "overrides": {
     "dompurify": "^3.4.17"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^1.5.0",
-    "@google/genai": "^2.32.0",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
     "@monaco-editor/react": "^4.7.0",
-    "@tailwindcss/vite": "^4.3.4",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
     "@xterm/addon-fit": "^0.11.0",
-    "@xterm/addon-webgl": "^0.19.0",
     "@xterm/xterm": "^6.0.0",
-    "clsx": "^2.1.1",
     "lucide-react": "^1.69.0",
     "monaco-editor": "^0.57.0",
-    "openai": "^7.51.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "tailwind-merge": "^3.7.0",
-    "tailwindcss": "^4.3.4",
     "zustand": "^5.0.16"
   },
   "devDependencies": {

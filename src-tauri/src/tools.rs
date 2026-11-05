@@ -15,39 +15,51 @@ struct Runtime {
 }
 impl Runtime {
     fn start(workspace: &Path) -> Result<Self, String> {
-        let project = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .to_owned();
-        let python = std::env::var_os("SHARK_RUNTIME_PYTHON")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                project.join(if cfg!(windows) {
-                    "backend/.venv/Scripts/python.exe"
-                } else {
-                    "backend/.venv/bin/python"
-                })
-            });
-        let binary = std::env::var_os("SHARK_CORE_BINARY")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                project.join(if cfg!(windows) {
-                    "target/debug/shark-backend.exe"
-                } else {
-                    "target/debug/shark-backend"
-                })
-            });
-        if !python.is_file() || !binary.is_file() {
-            return Err(
-                "Backend environment is missing. Run npm run backend:setup before starting Tauri."
-                    .into(),
-            );
-        }
-        let mut child = Command::new(python)
-            .args(["-m", "shark_runtime", "--workspace"])
-            .arg(workspace)
-            .arg("--core-binary")
-            .arg(binary)
+        let exe = if cfg!(windows) { ".exe" } else { "" };
+        // Packaged app: sidecars sit next to the executable (bundled via tauri.bundle.conf.json).
+        let beside = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(Path::to_path_buf));
+        let bundled = beside.as_ref().and_then(|dir| {
+            let runtime = dir.join(format!("shark-runtime{exe}"));
+            let core = dir.join(format!("shark-backend{exe}"));
+            (runtime.is_file() && core.is_file()).then_some((runtime, core))
+        });
+        let mut command = if let Some((runtime, core)) = bundled.filter(|_| std::env::var_os("SHARK_RUNTIME_PYTHON").is_none()) {
+            let mut c = Command::new(runtime);
+            c.arg("--workspace").arg(workspace).arg("--core-binary").arg(core);
+            c
+        } else {
+            let project = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .unwrap()
+                .to_owned();
+            let python = std::env::var_os("SHARK_RUNTIME_PYTHON")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| {
+                    project.join(if cfg!(windows) {
+                        "backend/.venv/Scripts/python.exe"
+                    } else {
+                        "backend/.venv/bin/python"
+                    })
+                });
+            let binary = std::env::var_os("SHARK_CORE_BINARY")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| project.join(format!("target/debug/shark-backend{exe}")));
+            if !python.is_file() || !binary.is_file() {
+                return Err(
+                    "Backend environment is missing. Run npm run backend:setup before starting Tauri."
+                        .into(),
+                );
+            }
+            let mut c = Command::new(python);
+            c.args(["-m", "shark_runtime", "--workspace"])
+                .arg(workspace)
+                .arg("--core-binary")
+                .arg(binary);
+            c
+        };
+        let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -90,6 +102,23 @@ impl Drop for Runtime {
 
 #[derive(Default)]
 pub struct NativeTools(Mutex<HashMap<PathBuf, Arc<Mutex<Runtime>>>>);
+
+/// Stop this workspace's runtime so the next request starts a fresh one (picks up backend updates).
+#[tauri::command]
+pub async fn backend_restart(
+    workspace: State<'_, Workspace>,
+    tools: State<'_, NativeTools>,
+) -> Result<(), String> {
+    let path = root(&workspace)?;
+    let removed = tools.0.lock().map_err(|e| e.to_string())?.remove(&path);
+    // Dropping the last handle kills the process; do it off the async runtime.
+    if let Some(runtime) = removed {
+        tauri::async_runtime::spawn_blocking(move || drop(runtime))
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
 
 /// Every desktop tool uses the same gateway as headless and ADK clients.
 #[tauri::command]

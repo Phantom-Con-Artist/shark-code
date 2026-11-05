@@ -1,70 +1,60 @@
 ---
 name: Shark Code workbench
-description: Compact conversation-led desktop coding workspace
+description: Agent-first desktop coding workspace; the Shark conversation is the centre of every state
 colors:
-  ground: "#151517"
-  sidebar: "#19191b"
-  surface: "#1d1d20"
-  raised: "#27272b"
-  border: "#323237"
-  control: "#73737d"
-  text: "#ececee"
-  muted: "#b1b1ba"
-  accent: "#9bcbb6"
+  bg: "#111113"          # Radix Slate 1: chrome, rail, sidebar
+  canvas: "#18191b"      # Slate 2: chat and editor
+  composer: "#1d1e21"
+  raised: "#212225"      # Slate 3
+  line: "#232528"
+  line-strong: "#363a3f" # Slate 6
+  text: "#edeef0"        # Slate 12
+  text-2: "#b0b4ba"      # Slate 11
+  accent: "#0bd8b6"      # Radix Teal 11 (text/icons on dark)
+  accent-fill: "#12a594" # Teal 9
+  ok: "#3dd68c"
+  warn: "#ffca16"
+  danger: "#ff9592"
 typography:
-  body:
-    fontFamily: "Arial, Helvetica, sans-serif"
-    fontSize: "13px"
-    lineHeight: 1.65
-  welcome:
-    fontFamily: "Arial, Helvetica, sans-serif"
-    fontSize: "26px"
-    fontWeight: 500
-    lineHeight: 1.3
-rounded:
-  control: "4px"
-  composer: "8px"
-spacing:
-  small: "8px"
-  medium: "16px"
-components:
-  button-primary:
-    backgroundColor: "#e9e9ed"
-    textColor: "#18181a"
-    height: "34px"
-    rounded: "5px"
+  ui: "Geist Variable, 13px"
+  code: "Geist Mono Variable"
+rounded: { sm: "5px", base: "7px", lg: "11px", composer: "pill/16px" }
+motion:
+  ease: "cubic-bezier(0.16, 1, 0.3, 1)"
+  durations: "120ms / 200ms / 300ms entrances"
 ---
 
 ## Overview
 
-An operating interface for long desktop coding sessions. Conversation leads; files, source and review remain alongside it. Compact spacing is user-confirmed. Comfortable spacing, larger text, Verdana, higher contrast and reduced motion are persistent preferences. Desktop is the current scope.
+Shark is the product; engines (Claude Code, Codex, agy, Muse, OpenRouter, Anthropic, Gemini) are interchangeable behind it. The conversation is the default view and stays visible in every state. **Code view** puts the editor in the centre with Shark docked full-height on the right, for people who want to write code themselves. Desktop only.
 
 ## Colors
 
-Neutral charcoal surfaces separate panes by lightness and thin rules. Mint signals status and focus. Primary actions use neutral light-on-dark inversion. Color never substitutes for a status label.
+Radix Slate 12-step neutrals with Radix Teal as the only accent, in plain hex so WebKitGTK and Chromium match. Light and dark themes plus a high-contrast option, all in `src/App.css` tokens. Status always pairs colour with text or an icon. Git colours follow VS Code conventions: modified amber, added/untracked green, deleted red, conflict red with "!".
 
 ## Typography
 
-Platform sans for interface/prose, system monospace for source and literal identifiers. Default interface text is 13px, adjustable to 15/17px. Metadata is at least 11px. Conversation prose uses generous line height; comfortable mode increases its measure. Avoid eyebrows above headings.
+Geist for UI and prose, Geist Mono for code and literal identifiers. Interface text is 13px, adjustable. Metadata never below 11px.
 
 ## Layout
 
-40px title bar, 46px activity rail, 224px explorer/task navigation, central conversation, adjacent source/review, optional terminal below and 25px status bar. Panes retain predictable positions. Focus mode hides secondary panes on request. Window resizing must preserve access; mobile/tablet refinement is out of scope.
+Custom title bar (menus, back/forward, omni search, Shark/Code switch, window controls), activity rail, resizable sidebar (Sessions, Explorer, Search, Source Control, Run, Browser, plugins), centre (Shark or editor), optional bottom panel (Terminal, Problems), status bar (backend, branch, problems, agents working, cache, profile, engine). Every pane width persists per profile.
 
-## Elevation & Depth
+## Depth
 
-Persistent surfaces are flat. Borders separate panes. Only dialogs float, with a subdued offset shadow; no glow, glass or decorative gradients.
-
-## Shapes
-
-Controls have modest 4–5px radii; composer 8px and dialogs 9px. Lucide icons and the existing Shark fin mark carry identity.
+Flat persistent surfaces separated by hairlines. Only popovers, dialogs and the composer float, with one shared shadow token. No glass, glow or decorative gradients.
 
 ## Components
 
-Files and Tasks switch the sidebar. Source and Review switch the adjacent pane. Composer stays available while the thread scrolls; no automatic history scrolling. Review starts with persisted What changes / What to check explanations, then files and impact, then optional Before/After snapshots. Missing explanations remain explicit. Graphify has no human-facing controls.
+- **Composer:** centred and rounded in the empty state; context chips, attachments, `/` commands (engine-native, model, effort, modes), mode chip, context group (compaction badge, prompt-cache state, fill ring) and the model picker.
+- **Thread:** thinking blocks, a step timeline (spinner then check), subagent steps nested under their parent, lifecycle markers (context compacted, provider retrying), error callouts by category (quota, rate limit, auth, context, network), and a proposal card with inline diffs and created-file previews.
+- **Browser:** project or localhost preview with an element picker. A pick shows the source lines that likely render it and drafts a change for Shark. Console errors stream in; Check runs headless Chromium.
+- **Editor:** Monaco with built-in TS/JS/JSON/CSS/HTML services, plus language servers for Python, Rust, Go and C/C++ through the runtime. Markdown opens rendered; HTML opens side by side, with "Pick elements". Blast radius sits in the breadcrumb bar.
 
-Keyboard focus is visible; dialogs trap/restore focus and close with Escape. Monaco supports screen readers and Tab focus navigation. Ctrl/Cmd+K or P finds files/actions, S saves, backtick toggles terminal, Shift+F toggles focus. Status changes use text, not animation.
+## Motion
+
+Motion explains state changes: steps entering, a check popping in when a step finishes, the Shark "wake" while working, the compaction rule fading in. `prefers-reduced-motion` and the in-app setting remove all of it.
 
 ## Do's and Don'ts
 
-Keep the conversation-led layout, compact default and comfortable option. Explain native-only browser boundaries and missing data honestly. Retain evidence with task proposals. Do not reintroduce sample agent runs, fabricate test results, expose Graphify as a user explorer, or claim full WCAG conformance from automated checks.
+Say "Shark", not the engine, except in the engine picker. Never invent test results or hide missing data. Show cost, cache and context limits honestly, and say when a number is unknown rather than guessing. Do not add marketing, oversized logos or decorative chrome.

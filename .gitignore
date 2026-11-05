@@ -37,3 +37,18 @@ __pycache__/
 # Local UI captures and generated detector cache
 .impeccable/review/
 .impeccable/hook.cache.json
+.playwright-mcp/
+
+# Release sidecars (scripts/build-sidecars.sh)
+src-tauri/binaries/
+
+# Internal notes and agent instruction files (not part of the project)
+CLAUDE-HANDOFF.md
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+PRODUCT.md
+docs/design-references.md
+.impeccable/
+.claude/
+.agents/

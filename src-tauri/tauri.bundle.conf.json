@@ -1,0 +1,5 @@
+{
+  "bundle": {
+    "externalBin": ["binaries/shark-runtime", "binaries/shark-backend"]
+  }
+}
