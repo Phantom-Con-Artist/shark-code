@@ -20,7 +20,7 @@ import urllib.parse
 from pathlib import Path
 
 SKIP_DIRS = {".git", ".shark", "node_modules", "target", "dist", "build", ".venv", "venv",
-             "__pycache__", ".next", ".turbo", ".cache", ".taste-skill", ".impeccable"}
+             "__pycache__", ".next", ".turbo", ".cache", "binaries", ".playwright-mcp", ".taste-skill", ".impeccable"}
 MAX_FILE = 2 * 1024 * 1024
 MAX_FILES = 20000
 
@@ -77,7 +77,26 @@ def models(provider):
 
 
 def _ignore(directory, names):
-    return [n for n in names if n in SKIP_DIRS or os.path.islink(os.path.join(directory, n))]
+    """Skip build output, links and large files (never diffed); copies must stay small."""
+    out = []
+    for n in names:
+        full = os.path.join(directory, n)
+        if n in SKIP_DIRS or os.path.islink(full):
+            out.append(n)
+        elif os.path.isfile(full):
+            try:
+                if os.path.getsize(full) > MAX_FILE:
+                    out.append(n)
+            except OSError:
+                out.append(n)
+    return out
+
+
+def _run_dir() -> Path:
+    """On disk, not /tmp: /tmp is RAM-backed on many Linux systems."""
+    base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "shark-code" / "runs"
+    base.mkdir(parents=True, exist_ok=True)
+    return base
 
 
 AGY_PLUGIN = ".agents/plugins/shark"
@@ -382,7 +401,7 @@ def run_cli(service, task_id, provider, model, cancelled: threading.Event, effor
     """Blocking run. Returns final status string."""
     store = service.store
     root = Path(service.core.root)
-    workdir = Path(tempfile.mkdtemp(prefix="shark-cli-"))
+    workdir = Path(tempfile.mkdtemp(prefix="shark-cli-", dir=_run_dir()))
     copy = workdir / root.name
     process = None
     try:
