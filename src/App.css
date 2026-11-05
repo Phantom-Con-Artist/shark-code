@@ -877,3 +877,5 @@ details.impact li small { display: block; color: var(--fg-4); font-family: var(-
 .tool-missing .name { font-weight: 400; }
 .pane-shark { min-height: 0; overflow: clip; }
 .pane-shark > * { min-height: 0; }
+.working .elapsed { font-variant-numeric: tabular-nums; }
+.run-time { color: var(--fg-4); font-variant-numeric: tabular-nums; margin: 2px 0 0; }

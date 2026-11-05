@@ -139,6 +139,16 @@ function Lifecycle({ block }: { block: Extract<Block, { type: 'lifecycle' }> }) 
   </div>;
 }
 
+/** 850ms, 42s, 3m 07s, 1h 02m */
+function elapsed(seconds: number) {
+  const t = Math.max(0, seconds);
+  if (t < 1) return `${Math.round(t * 1000)}ms`;
+  if (t < 60) return `${Math.floor(t)}s`;
+  const m = Math.floor(t / 60), sec = Math.floor(t % 60);
+  if (m < 60) return `${m}m ${String(sec).padStart(2, '0')}s`;
+  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+}
+
 function describe(name: string): { icon: typeof Wrench; verb: string } {
   const n = name.toLowerCase();
   if (n.includes('isolated')) return { icon: FolderTree, verb: 'Prepared workspace' };
@@ -275,6 +285,7 @@ export function AgentPanel() {
   const anyRunning = agent.tasks.some(t => t.status === 'running');
   const goal = task ? parseGoal(task.goal) : null;
   const startedAt = agent.events.find(e => e.kind === 'started')?.timestamp;
+  const finishedAt = [...agent.events].reverse().find(e => ['completed', 'failed', 'cancelled', 'review', 'proposal'].includes(e.kind))?.timestamp;
   const empty = !task && pending === null;
 
   useEffect(() => {
@@ -541,10 +552,11 @@ export function AgentPanel() {
               {(() => { const st = contextState(usage, task?.engine); return st?.fill != null && st.fill > 0.75 && <p className={`notice ${st.fill > 0.9 ? 'danger' : 'warn'}`}><CircleAlert size={13} />
                 Context {Math.round(st.fill * 100)}% full{st.fill > 0.9 ? '. The engine will compact soon and may lose early details.' : '.'} Start a new chat to keep Shark's full attention.</p>; })()}
               {streaming && <Markdown text={streaming} streaming={!s.reduceMotion} />}
-              {(pending !== null || (running && !streaming && blocks.at(-1)?.type !== 'thinking' && blocks.at(-1)?.type !== 'steps')) &&
-                <div className="working"><span className="shark-wake" aria-hidden="true"><SharkMark className="wake-fin" /></span><span className="thinking-label">{pending !== null ? 'Starting' : 'Working'}<span className="dots"><i /><i /><i /></span></span>{startedAt && running && <span className="muted">{Math.max(0, Math.round(now / 1000 - startedAt))}s</span>}</div>}
+              {(pending !== null || running) &&
+                <div className="working"><span className="shark-wake" aria-hidden="true"><SharkMark className="wake-fin" /></span><span className="thinking-label">{pending !== null ? 'Starting' : 'Working'}<span className="dots"><i /><i /><i /></span></span>{startedAt && running && <span className="muted elapsed">{elapsed(now / 1000 - startedAt)}</span>}</div>}
               {task && agent.proposal && task.proposal_id === agent.proposal.id && <ProposalCard />}
               {task && !running && task.status === 'cancelled' && <p className="fine">Stopped.</p>}
+              {task && !running && startedAt && finishedAt && <p className="fine run-time">{task.status === 'cancelled' ? 'Stopped after' : task.status === 'failed' ? 'Failed after' : 'Finished in'} {elapsed(finishedAt - startedAt)}</p>}
               {task && !running && task.status === 'interrupted' && <p className="fine">Interrupted when the backend restarted.</p>}
               {task && !running && task.status === 'completed' && !agent.proposal && blocks.length > 0 && <p className="fine done-note"><Check size={12} /> Done. No file changes.</p>}
             </div>
