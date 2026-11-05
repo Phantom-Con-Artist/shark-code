@@ -13,6 +13,7 @@ import { lineDiff, readArtifact, type DiffLine } from '../../lib/artifacts';
 import { useUi } from '../../stores/useUi';
 import type { ProviderStatus, TaskEvent } from '../../lib/sharkBackend';
 import { Markdown } from './Markdown';
+import { Select } from './NativeUi';
 import { changeKind, FileIcon, Popover, SharkMark } from './primitives';
 import { detectTasks, defaultTask } from './tasks';
 import { askAgent } from './BottomPanel';
@@ -474,10 +475,9 @@ export function AgentPanel() {
           <Popover open={menu === 'model'} onClose={() => setMenu(null)} className="model-pop" style={{ right: 0, bottom: 'calc(100% + 8px)' }}>
             <div className="pop-row">
               <label className="label" htmlFor="engine-select">Engine</label>
-              <select id="engine-select" className="field engine-select" value={s.provider} onChange={e => s.set({ provider: e.target.value as ProviderId })}>
-                <optgroup label="CLI">{CLI_ORDER.map(id => <option key={id} value={id}>{PROVIDERS[id].label} · {readiness(id, native, agent.providers, s.keys).label}</option>)}</optgroup>
-                <optgroup label="API key">{API_ORDER.map(id => <option key={id} value={id}>{PROVIDERS[id].label} · {readiness(id, native, agent.providers, s.keys).label}</option>)}</optgroup>
-              </select>
+              <Select id="engine-select" label="Engine" className="engine-select" value={s.provider} onChange={v => s.set({ provider: v as ProviderId })}
+                options={[...CLI_ORDER.map(id => ({ value: id as string, label: PROVIDERS[id].label, detail: readiness(id, native, agent.providers, s.keys).label, group: 'CLI' })),
+                  ...API_ORDER.map(id => ({ value: id as string, label: PROVIDERS[id].label, detail: readiness(id, native, agent.providers, s.keys).label, group: 'API key' }))]} />
             </div>
             <hr />
             <div className="group label">Model</div>

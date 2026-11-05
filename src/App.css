@@ -879,3 +879,15 @@ details.impact li small { display: block; color: var(--fg-4); font-family: var(-
 .pane-shark > * { min-height: 0; }
 .working .elapsed { font-variant-numeric: tabular-nums; }
 .run-time { color: var(--fg-4); font-variant-numeric: tabular-nums; margin: 2px 0 0; }
+
+/* Shark tooltips and select menus (replace OS widgets) */
+.shark-tip { position: fixed; z-index: 1000; transform: translate(-50%, -100%); max-width: 320px; padding: 5px 8px; border-radius: var(--radius-sm); background: var(--overlay); color: var(--fg-2); font-size: 11.5px; line-height: 1.45; white-space: pre-line; box-shadow: var(--shadow); pointer-events: none; animation: fade-in var(--t-fast) var(--ease) both; }
+.shark-tip.below { transform: translate(-50%, 0); }
+.shark-select { position: relative; min-width: 0; }
+.shark-select-btn { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; cursor: pointer; }
+.shark-select-btn .ellipsis { flex: 1; min-width: 0; }
+.shark-select .detail { color: var(--fg-4); font-size: 11.5px; white-space: nowrap; }
+.shark-select-menu { position: absolute; z-index: 60; left: 0; right: 0; top: calc(100% + 4px); min-width: 200px; max-height: 300px; overflow: auto; padding: 4px; border-radius: var(--radius); background: var(--overlay); box-shadow: var(--shadow); animation: pop var(--t) var(--ease); }
+.shark-select-menu .menu-item { width: 100%; }
+.shark-select-menu .menu-item .ellipsis { flex: 1; min-width: 0; }
+.shark-select-group { padding: 6px 8px 3px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-4); }

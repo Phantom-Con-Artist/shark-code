@@ -1,3 +1,4 @@
+import { Select } from './NativeUi';
 import { useRef, useState } from 'react';
 import { Bot, Code2, Keyboard, Laptop, Moon, Palette, Plus, Sparkles, Sun, Trash2, X } from 'lucide-react';
 import { useAgentWorkspace } from '../../stores/useAgentWorkspace';
@@ -54,9 +55,7 @@ export function SettingsDialog() {
             </div>
           </Row>
           <Row label="Interface text size">
-            <select className="field" value={s.fontSize} onChange={e => s.set({ fontSize: Number(e.target.value) })}>
-              {[12, 13, 14, 15, 17].map(n => <option key={n} value={n}>{n}px{n === 13 ? ' (default)' : ''}</option>)}
-            </select>
+            <Select label="Interface text size" value={s.fontSize} onChange={v => s.set({ fontSize: v })} options={[12, 13, 14, 15, 17].map(n => ({ value: n, label: `${n}px${n === 13 ? ' (default)' : ''}` }))} />
           </Row>
           <Row label="Pane sizes" hint="Drag any divider to resize. Double-click a divider to reset it.">
             <button className="btn sm" onClick={() => s.set({ ...LAYOUT_DEFAULTS, sidebarOpen: true })}>Reset layout</button>
@@ -71,9 +70,7 @@ export function SettingsDialog() {
           <h3>Editor</h3>
           <p>Applies to the code editor, diffs and terminal.</p>
           <Row label="Font size">
-            <select className="field" value={s.editorFontSize} onChange={e => s.set({ editorFontSize: Number(e.target.value) })}>
-              {[12, 13, 14, 15, 16, 18].map(n => <option key={n} value={n}>{n}px</option>)}
-            </select>
+            <Select label="Editor text size" value={s.editorFontSize} onChange={v => s.set({ editorFontSize: v })} options={[12, 13, 14, 15, 16, 18].map(n => ({ value: n, label: `${n}px` }))} />
           </Row>
           <Toggle label="Word wrap" checked={s.wordWrap} onChange={v => s.set({ wordWrap: v })} />
           <Toggle label="Minimap" checked={s.minimap} onChange={v => s.set({ minimap: v })} />
