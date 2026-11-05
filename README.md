@@ -2,6 +2,25 @@
 
 > **The Agent-First Code Editor** — Designed from the ground up for autonomous AI coding agents, universal CLI model hookups, and zero-compromise developer ergonomics.
 
+## Backend foundation
+
+Shark's workspace runtime joins native Rust editing, Graphify code exploration and dependency-impact reports, persisted tasks, and Google ADK sessions through one API. Task proposals carry their impact evidence; host application checks that the reviewed graph and edited source versions are still current.
+
+Run `npm run backend:setup` once, then `npm run backend:dev` for the JSON-lines gateway. Set backend provider credentials and pass a configured model ID to `agent/start` for model execution. Tests use the real ADK runner and Graphify extractor with an offline model. See [the runtime guide](docs/backend/runtime.md) and [native tool reference](docs/backend/README.md) for setup, protocol examples, limits and remaining work.
+
+## Current frontend preview
+
+Run `npm install` and `npm run dev`, then open `http://localhost:1420`. `npm run build` checks TypeScript and produces the production bundle.
+
+The conversation is the primary workspace. Create and search sessions (Ctrl/Cmd+K), describe work in the Build/Ask composer, and review the agent’s plan. Reviews open with a plain-language explanation, followed by optional syntax-highlighted Before/After code.
+
+The Files tab includes an expandable project explorer, file filtering, new file creation, editor tabs, and a locally bundled Monaco editor with syntax highlighting, search, and Ctrl/Cmd+S. Unsaved files are marked, reloads warn about unsaved edits, and disk saves detect external changes. Use the header terminal button or Ctrl/Cmd+backtick to open the terminal.
+
+- **Browser workspace:** starts with bundled project files. Saving persists edits in this browser. Open Folder connects a selected local folder in browsers that support the File System Access API; saving then writes to that folder. The browser console supports `help`, `pwd`, `ls`, `cd`, `cat`, `touch`, and `clear`.
+- **Tauri desktop:** `npm run tauri dev` opens the native app. Workspace commands read and write local project files; Open Folder accepts a project path. The terminal runs an interactive system shell through portable-pty, with streamed output, keyboard input, resizing, and cleanup. Standard Rust/Tauri system prerequisites are required.
+
+Agent conversations, activity, and proposals are still simulated and reset on reload. Accepting a sample records only a session approval; it does not apply that sample to disk. Model connections, real agent streaming, and agent-driven changes remain integration work. Manual file editing and saving operate independently of the sample agent.
+
 ---
 
 ## 💡 The Vision

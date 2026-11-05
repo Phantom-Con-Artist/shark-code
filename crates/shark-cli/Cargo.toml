@@ -1,0 +1,15 @@
+[package]
+name = "shark-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "shark-backend"
+path = "src/main.rs"
+
+[dependencies]
+shark-core = { path = "../shark-core" }
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

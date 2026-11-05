@@ -1,3 +1,6 @@
+mod tools;
+mod workspace;
+use workspace::*;
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -8,7 +11,20 @@ fn greet(name: &str) -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
+        .manage(Workspace::default())
+        .manage(Terminals::default())
+        .manage(tools::NativeTools::default())
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            tools::backend_request,
+            workspace_open,
+            workspace_read,
+            workspace_write,
+            terminal_open,
+            terminal_write,
+            terminal_resize,
+            terminal_close
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

@@ -4,6 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "backend:setup": "uv sync --project backend --locked && cargo build --bin shark-backend",
+    "backend:dev": "uv run --project backend --no-sync shark-runtime --workspace .",
+    "backend:test": "uv run --project backend --no-sync python -m unittest discover -s backend/tests -v",
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
@@ -24,6 +27,7 @@
     "@xterm/xterm": "^6.0.0",
     "clsx": "^2.1.1",
     "lucide-react": "^1.69.0",
+    "monaco-editor": "^0.57.0",
     "openai": "^7.51.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

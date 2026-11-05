@@ -23,3 +23,13 @@ src-tauri/target/
 *.njsproj
 *.sln
 *.sw?
+
+# Local design measurements and screenshots
+.taste-skill/
+
+# Native backend build and private workspace state
+/target/
+.shark/
+.venv/
+__pycache__/
+*.pyc
