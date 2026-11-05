@@ -72,18 +72,20 @@ class AgentHost:
             """Inspect reverse dependencies of changed files with evidence paths and confidence."""
             return await invoke("graph/impact", {"paths": paths, "depth": depth})
 
-        async def propose_changes(changes_json: str) -> dict:
+        async def propose_changes(changes_json: str, summary: str, review_notes: str) -> dict:
             """Prepare changes for host review. JSON is an array of native create/edit/delete operations.
 
             Example: [{"kind":"edit","path":"a.ts","expected_version":"from read_file",
             "edits":[{"kind":"replace","old":"old text","new":"new text","expected_matches":1}]}]
+            summary explains the behavior change in plain language; review_notes explains
+            what the person should inspect or verify. Never invent successful tests.
             This never applies edits. The proposal includes dependency impact evidence.
             """
             try:
                 changes = json.loads(changes_json)
             except ValueError:
                 return {"error": {"code": "invalid_json", "message": "Expected a JSON changes array"}}
-            return await invoke("task/propose", {"id": task_id, "changes": changes})
+            return await invoke("task/propose", {"id": task_id, "changes": changes, "summary": summary, "review_notes": review_notes})
 
         return [explore, read_file, search_code, assess_impact, propose_changes]
 

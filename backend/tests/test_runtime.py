@@ -69,6 +69,7 @@ class WorkspaceTests(unittest.TestCase):
 
     def test_coherent_task_proposal_impact_apply_refresh_and_revert(self):
         task = self.service.execute('task/create', {'goal': 'Change add arithmetic'})
+        self.assertEqual(self.service.execute('task/list', {})['tasks'][0]['id'], task['id'])
         context = self.service.execute('task/context', {'id': task['id'], 'query': 'add'})
         before = (self.root / 'math.ts').read_bytes()
         proposal = self.service.execute('task/propose', {'id': task['id'], 'changes': self.edit()})

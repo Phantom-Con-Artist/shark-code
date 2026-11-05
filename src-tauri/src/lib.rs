@@ -19,6 +19,7 @@ pub fn run() {
             tools::backend_request,
             workspace_open,
             workspace_read,
+            workspace_refresh,
             workspace_write,
             terminal_open,
             terminal_write,

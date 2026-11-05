@@ -36,10 +36,27 @@ async function scanFolder(base: DirectoryHandle, prefix = '', depth = 0): Promis
   return result;
 }
 interface ProjectState {
+  refreshFromDisk(paths: string[]): Promise<void>;
   name: string; root: string; kind: 'browser' | 'folder' | 'native'; entries: ProjectEntry[]; tabs: OpenFile[]; activePath: string; error: string; notice: string; busy: boolean;
   initialize(): Promise<void>; openFolder(path?: string): Promise<void>; openFile(path: string): Promise<void>; edit(path: string, content: string): void; save(path: string): Promise<void>; createFile(path: string): Promise<void>; closeFile(path: string): void; reloadFile(path: string): Promise<void>; clearError(): void;
 }
 export const useProjectStore = create<ProjectState>((set, get) => ({
+  refreshFromDisk: async paths => {
+    if (get().kind !== 'native') return;
+    const root = get().root;
+    const original = get().tabs;
+    try {
+      const project = await invoke<{ name: string; root: string; entries: ProjectEntry[] }>('workspace_refresh', { expectedRoot: root });
+      if (get().root !== root) return;
+      set({ entries: project.entries });
+      for (const file of original.filter(f => paths.includes(f.path) && f.content === f.saved)) {
+        if (!project.entries.some(e => e.path === file.path && !e.directory)) { get().closeFile(file.path); continue; }
+        const content = await invoke<string>('workspace_read', { path: file.path });
+        if (get().root !== root) return;
+        set(s => ({ tabs: s.tabs.map(t => t.path === file.path && t.content === file.content && t.saved === file.saved ? { ...t, content, saved: content } : t) }));
+      }
+    } catch (e) { if (get().root === root) set({ error: `Proposal applied, but refreshing the editor failed: ${e instanceof Error ? e.message : String(e)}` }); }
+  },
   name: 'shark-code', root: 'Browser workspace', kind: 'browser', entries: entriesFor(browserFiles()), tabs: [], activePath: '', error: '', notice: '', busy: false,
   initialize: () => {
     if (initialization) return initialization;

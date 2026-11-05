@@ -12,7 +12,7 @@ CORE_TOOLS = {"workspace/list", "workspace/snapshot", "file/read", "code/search"
     "artifact/read", "cache/stats", "changes/preview", "changes/apply", "changes/revert",
     "changes/pending", "changes/recover", "changes/inspect"}
 APP_TOOLS = {"workspace/context", "graph/index", "graph/query", "graph/impact", "changes/analyze",
-    "task/create", "task/get", "task/context", "task/propose", "task/apply", "task/events",
+    "task/create", "task/list", "task/get", "task/context", "task/propose", "task/apply", "task/events",
     "agent/start", "agent/cancel"}
 
 
@@ -66,6 +66,9 @@ class Service:
         if method == "task/create":
             self.fields(p, {"goal"})
             return self.store.create(p["goal"])
+        if method == "task/list":
+            self.fields(p, optional={"limit"})
+            return self.store.list(**p)
         if method in {"task/get", "task/events", "task/context", "task/propose", "task/apply", "agent/start", "agent/cancel"}:
             return self.task_method(method, p)
         raise Fault("unknown_method", method)
@@ -91,7 +94,7 @@ class Service:
         return {"proposal": preview, "impact": impact}
 
     def task_method(self, method, p):
-        optional = {"after", "limit"} if method == "task/events" else {"query"} if method == "task/context" else {"model"} if method == "agent/start" else set()
+        optional = {"after", "limit"} if method == "task/events" else {"query"} if method == "task/context" else {"model"} if method == "agent/start" else {"summary", "review_notes"} if method == "task/propose" else set()
         required = {"id", "changes"} if method == "task/propose" else {"id"}
         self.fields(p, required, optional)
         task = self.store.get(p["id"])
@@ -120,11 +123,15 @@ class Service:
             if method == "task/propose":
                 if task["status"] == "applied":
                     raise Fault("invalid_state", "Create a new task for changes after an applied proposal")
+                for key in ("summary", "review_notes"):
+                    if key in p and (not isinstance(p[key], str) or not p[key].strip() or len(p[key]) > 2000):
+                        raise Fault("invalid_params", f"{key} must contain 1–2,000 characters")
                 self.graph.ensure()
                 preview = self.core.call("changes/preview", {"changes": p["changes"]})
                 analysis = self.analyze(preview["id"])
                 revision = analysis["impact"]["revision"]
-                task.update(proposal_id=preview["id"], proposal_revision=revision, status="review")
+                task.update(proposal_id=preview["id"], proposal_revision=revision, status="review",
+                    summary=p.get("summary"), review_notes=p.get("review_notes"))
                 self.store.save(task)
                 self.store.event(task["id"], "proposal", {"proposal_id": preview["id"], "revision": revision})
                 return {"task": task, **analysis}

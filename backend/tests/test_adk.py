@@ -28,7 +28,7 @@ class ScriptedModel(BaseLlm):
             version = responses[-1].response['version']
             changes = [{'kind': 'edit', 'path': 'math.ts', 'expected_version': version,
                         'edits': [{'kind': 'replace', 'old': 'a+b', 'new': 'a-b'}]}]
-            part = types.Part.from_function_call(name='propose_changes', args={'changes_json': json.dumps(changes)})
+            part = types.Part.from_function_call(name='propose_changes', args={'changes_json': json.dumps(changes), 'summary': 'The add function will subtract the second number instead of adding it.', 'review_notes': 'Confirm subtraction is intended and test positive and negative inputs. No tests have been run.'})
         else:
             part = types.Part(text='Arithmetic proposal ready for review.')
         self.phase += 1
@@ -67,6 +67,8 @@ class AdkTests(unittest.TestCase):
         task = self.service.store.get(self.task['id'])
         events = self.service.store.events(task['id'])['events']
         self.assertEqual(task['status'], 'review', events)
+        self.assertIn('subtract', task['summary'])
+        self.assertIn('No tests', task['review_notes'])
         self.assertIn('a+b', (self.root / 'math.ts').read_text())
         self.assertEqual(sum(e['kind'] == 'tool_call' for e in events), 3)
         self.assertTrue(any(e['kind'] == 'completed' for e in events))

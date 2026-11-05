@@ -31,7 +31,7 @@ class Store:
         if not isinstance(goal, str) or not goal.strip() or len(goal) > 16000:
             raise Fault("invalid_goal", "Task goal must contain 1–16,000 characters")
         task = {"id": uuid.uuid4().hex, "goal": goal, "status": "created", "proposal_id": None,
-                "proposal_revision": None, "created_at": time.time()}
+                "proposal_revision": None, "summary": None, "review_notes": None, "created_at": time.time()}
         self.save(task)
         self.event(task["id"], "created", {"goal": goal[:2000], "truncated": len(goal) > 2000})
         return task
@@ -76,3 +76,14 @@ class Store:
     def close(self):
         with self.lock:
             self.db.close()
+
+    def list(self, limit=50):
+        if not isinstance(limit, int) or not 1 <= limit <= 100:
+            raise Fault("invalid_range", "Task list limit must be 1–100")
+        with self.lock:
+            rows = self.db.execute("SELECT body FROM tasks ORDER BY json_extract(body, '$.created_at') DESC LIMIT ?", (limit + 1,)).fetchall()
+        tasks = []
+        for (body,) in rows[:limit]:
+            task = json.loads(body)
+            tasks.append({**task, "goal": task["goal"][:200]})
+        return {"tasks": tasks, "has_more": len(rows) > limit}

@@ -1,4 +1,5 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
+import { useProjectStore } from '../stores/useProjectStore';
 
 export class BackendError extends Error {
   constructor(public readonly code: string, message: string) { super(message); this.name = 'BackendError'; }
@@ -31,7 +32,7 @@ type Response<T> = { id: string; result: T; error?: never } | { id: string; resu
 async function request<T>(method: string, params: object = {}): Promise<T> {
   if (!isTauri()) throw new BackendError('native_required', 'Open Shark Code in the desktop app to use native agent tools.');
   const id = crypto.randomUUID();
-  const response = await invoke<Response<T>>('backend_request', { request: { id, method, params } });
+  const response = await invoke<Response<T>>('backend_request', { workspaceRoot: useProjectStore.getState().root, request: { id, method, params } });
   if (response.id !== id) throw new BackendError('protocol_error', 'The backend response did not match its request.');
   if (response.error) throw new BackendError(response.error.code, response.error.message);
   return response.result as T;
@@ -69,7 +70,7 @@ export interface ImpactReport {
   coverage: Record<string, unknown>; truncated: boolean; analysis: string;
 }
 export interface AgentTask {
-  id: string; goal: string; status: 'created' | 'running' | 'review' | 'applied' | 'completed' | 'cancelled' | 'interrupted' | 'failed';
+  id: string; goal: string; summary?: string | null; review_notes?: string | null; status: 'created' | 'running' | 'review' | 'applied' | 'completed' | 'cancelled' | 'interrupted' | 'failed';
   proposal_id: string | null; proposal_revision: string | null; created_at: number; proposal_status?: ChangePreview['status'];
 }
 export interface TaskEvent {
@@ -78,6 +79,7 @@ export interface TaskEvent {
 // Desktop and agent adapters call one workspace gateway. Tasks join exploration,
 // impact evidence and the native changeset rather than keeping parallel state.
 export const sharkWorkspace = {
+  tasks: () => request<{ tasks: AgentTask[]; has_more: boolean }>('task/list'),
   context: (query: string, limit = 10) => request<{ query: string; graph: GraphResult; next_actions: string[]; source_policy: string }>('workspace/context', { query, limit }),
   index: (force = false) => request<{ revision: string; node_count: number; edge_count: number; coverage: Record<string, unknown> }>('graph/index', { force }),
   query: (query: string, limit = 20) => request<GraphResult>('graph/query', { query, limit }),

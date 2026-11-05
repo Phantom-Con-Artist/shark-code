@@ -132,6 +132,27 @@ pub fn workspace_read(path: String, state: State<'_, Workspace>) -> Result<Strin
     fs::read_to_string(target).map_err(|e| e.to_string())
 }
 #[tauri::command]
+pub fn workspace_refresh(
+    expected_root: String,
+    state: State<'_, Workspace>,
+) -> Result<Project, String> {
+    let base = root(&state)?;
+    if base.to_string_lossy() != expected_root {
+        return Err("Workspace changed; refresh the current project".into());
+    }
+    let mut entries = Vec::new();
+    scan(&base, &base, &mut entries, 0)?;
+    Ok(Project {
+        name: base
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into(),
+        root: base.to_string_lossy().into(),
+        entries,
+    })
+}
+#[tauri::command]
 pub fn workspace_write(
     path: String,
     content: String,

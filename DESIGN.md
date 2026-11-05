@@ -1,34 +1,70 @@
-# Shark Code workspace
+---
+name: Shark Code workbench
+description: Compact conversation-led desktop coding workspace
+colors:
+  ground: "#151517"
+  sidebar: "#19191b"
+  surface: "#1d1d20"
+  raised: "#27272b"
+  border: "#323237"
+  control: "#73737d"
+  text: "#ececee"
+  muted: "#b1b1ba"
+  accent: "#9bcbb6"
+typography:
+  body:
+    fontFamily: "Arial, Helvetica, sans-serif"
+    fontSize: "13px"
+    lineHeight: 1.65
+  welcome:
+    fontFamily: "Arial, Helvetica, sans-serif"
+    fontSize: "26px"
+    fontWeight: 500
+    lineHeight: 1.3
+rounded:
+  control: "4px"
+  composer: "8px"
+spacing:
+  small: "8px"
+  medium: "16px"
+components:
+  button-primary:
+    backgroundColor: "#e9e9ed"
+    textColor: "#18181a"
+    height: "34px"
+    rounded: "5px"
+---
 
-The primary surface is an operating interface for long coding sessions. Conversation owns the center of the workspace; code and proposed changes sit beside it. The agent plan, activity, and review handoff stay in the conversation. The user selected this conversation-led direction.
+## Overview
 
-## Visual system
+An operating interface for long desktop coding sessions. Conversation leads; files, source and review remain alongside it. Compact spacing is user-confirmed. Comfortable spacing, larger text, Verdana, higher contrast and reduced motion are persistent preferences. Desktop is the current scope.
 
-Neutral dark surfaces continue the existing editor's identity. Elevation uses changes in lightness. Thin rules separate persistent panes; contained plans use a slightly raised surface. Mint indicates completed steps and additions; muted rose indicates removed code. Controls and navigation remain neutral.
+## Colors
 
-| Role | Token | Value |
-| --- | --- | --- |
-| Canvas | `--ground` | `#151517` |
-| Navigation | `--sidebar` | `#18181a` |
-| Surface | `--surface` | `#1d1d20` |
-| Raised surface | `--raised` | `#252528` |
-| Separator | `--border` | `#2c2c30` |
-| Primary text | `--text` | `#e7e7e9` |
-| Secondary text | `--muted` | `#a0a0a7` |
-| Metadata | `--faint` | `#9999a3` |
-| Completed / added | `--accent` | `#9bcbb6` |
-| Removed code | `--red` | `#d9a2a6` |
+Neutral charcoal surfaces separate panes by lightness and thin rules. Mint signals status and focus. Primary actions use neutral light-on-dark inversion. Color never substitutes for a status label.
 
-Use the platform Arial/Helvetica sans stack for controls and prose, and the system monospace stack for code, paths, and measurements. Conversation prose is 13px with generous line height. Dense labels are 11–12px. The Shark fin is the product mark, rendered as a simple flat vector. Lucide supplies the remaining icons.
+## Typography
 
-## Layout and interaction
+Platform sans for interface/prose, system monospace for source and literal identifiers. Default interface text is 13px, adjustable to 15/17px. Metadata is at least 11px. Conversation prose uses generous line height; comfortable mode increases its measure. Avoid eyebrows above headings.
 
-Desktop uses a 232px navigation column, a flexible conversation pane, and a code pane occupying 42% of the remaining space. The composer remains visible while the thread scrolls. The review action remains below the independently scrolling diff. At initial widths of 1000px or less, code starts collapsed. Below 760px, navigation becomes a menu and code opens as an overlay. The header toggle always controls code visibility.
+## Layout
 
-Interactive controls have visible keyboard focus, and dialogs trap focus, close with Escape, and restore focus to their trigger. Ctrl/Cmd+K opens search, Ctrl/Cmd+N creates a session, and Ctrl/Cmd+comma opens preferences. Enter sends; Shift+Enter adds a line. Reduced motion disables smooth scrolling and transitions.
+40px title bar, 46px activity rail, 224px explorer/task navigation, central conversation, adjacent source/review, optional terminal below and 25px status bar. Panes retain predictable positions. Focus mode hides secondary panes on request. Window resizing must preserve access; mobile/tablet refinement is out of scope.
 
-## Prototype boundary
+## Elevation & Depth
 
-Reviews start with what changes, why it helps, and the affected file. Code is optional, shown as readable Before/After versions with syntax highlighting instead of large red/green blocks.
+Persistent surfaces are flat. Borders separate panes. Only dialogs float, with a subdued offset shadow; no glow, glass or decorative gradients.
 
-The sample session and proposal are illustrative fixtures. Runs advance through a local timer, can pause and resume, and preserve independent per-session approval state. Files contains a collapsible folder tree and a locally bundled Monaco editor. Browser workspace files persist in localStorage. Opening a folder uses the browser File System Access API where available; native workspace commands provide local filesystem access in Tauri. Saves check for external edits before writing. The terminal is a limited workspace console in the browser and an interactive PTY shell in the desktop app. Accepting the sample records a local approval without writing files. Ask mode explains the runtime connection boundary. Reloading resets conversations, while saved browser workspace files persist. Do not imply that a model or native keychain is connected until those integrations exist. Label the browser console separately from the desktop system shell.
+## Shapes
+
+Controls have modest 4–5px radii; composer 8px and dialogs 9px. Lucide icons and the existing Shark fin mark carry identity.
+
+## Components
+
+Files and Tasks switch the sidebar. Source and Review switch the adjacent pane. Composer stays available while the thread scrolls; no automatic history scrolling. Review starts with persisted What changes / What to check explanations, then files and impact, then optional Before/After snapshots. Missing explanations remain explicit. Graphify has no human-facing controls.
+
+Keyboard focus is visible; dialogs trap/restore focus and close with Escape. Monaco supports screen readers and Tab focus navigation. Ctrl/Cmd+K or P finds files/actions, S saves, backtick toggles terminal, Shift+F toggles focus. Status changes use text, not animation.
+
+## Do's and Don'ts
+
+Keep the conversation-led layout, compact default and comfortable option. Explain native-only browser boundaries and missing data honestly. Retain evidence with task proposals. Do not reintroduce sample agent runs, fabricate test results, expose Graphify as a user explorer, or claim full WCAG conformance from automated checks.

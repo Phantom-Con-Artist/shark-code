@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-06T01:20:00+05:30",
+  "title": "Design System: Shark Code",
+  "extensions": {
+    "shadows": [
+      {
+        "name": "dialog",
+        "value": "0 16px 55px rgb(0 0 0 / .3)",
+        "purpose": "Floating dialogs only"
+      }
+    ],
+    "motion": [
+      {
+        "name": "reduced-default",
+        "value": "none",
+        "purpose": "Still feedback and nonblinking cursor by default"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "desktop-navigation-collapse",
+        "value": "1000px"
+      }
+    ]
+  },
+  "components": [],
+  "narrative": {
+    "northStar": "Conversation with source evidence alongside",
+    "overview": "Compact, neutral desktop workbench with persistent reading preferences and explicit review. Graphify is agent-only infrastructure.",
+    "keyCharacteristics": [
+      "Stable pane locations",
+      "Compact default",
+      "Optional code detail",
+      "Honest task state"
+    ],
+    "rules": [
+      {
+        "name": "Agent-only Graphify",
+        "body": "No human graph explorer or Context tab.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "Keep readable focus and contrast",
+      "Explain proposed behavior before code"
+    ],
+    "donts": [
+      "Simulate agent execution",
+      "Refine mobile/tablet outside current scope"
+    ]
+  }
+}

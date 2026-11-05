@@ -4,16 +4,18 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { Maximize2, Minimize2, Terminal as TerminalIcon, Trash2, X } from 'lucide-react';
 import '@xterm/xterm/css/xterm.css';
+import { useReadingPreferences } from '../../stores/useReadingPreferences';
 import { useProjectStore } from '../../stores/useProjectStore';
 export function WorkspaceTerminal({ onClose }: { onClose(): void }) {
   const container = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const prefs = useReadingPreferences();
   const root = useProjectStore(s => s.root);
   useEffect(() => {
     if (!container.current) return;
     let disposed = false; let nativeId: number | null = null;
-    const term = new Terminal({ fontSize: 12, lineHeight: 1.35, cursorBlink: true, fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace', convertEol: true, theme: { background: '#151517', foreground: '#d8d8df', cursor: '#9bcbb6', selectionBackground: '#3e5a50' } });
+    const term = new Terminal({ fontSize: prefs.fontSize, lineHeight: 1.35, screenReaderMode: true, cursorBlink: !prefs.reduceMotion, fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace', convertEol: true, theme: { background: '#151517', foreground: '#d8d8df', cursor: '#9bcbb6', selectionBackground: '#3e5a50' } });
     const fit = new FitAddon(); term.loadAddon(fit); term.open(container.current); terminal.current = term;
     let line = ''; let cwd = ''; let busy = false; const history: string[] = []; let historyIndex = 0;
     const prompt = () => term.write(`\x1b[38;2;155;203;182m${useProjectStore.getState().name}\x1b[0m ${cwd || '/'} $ `);

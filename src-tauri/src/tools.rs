@@ -95,10 +95,14 @@ pub struct NativeTools(Mutex<HashMap<PathBuf, Arc<Mutex<Runtime>>>>);
 #[tauri::command]
 pub async fn backend_request(
     request: serde_json::Value,
+    workspace_root: String,
     workspace: State<'_, Workspace>,
     tools: State<'_, NativeTools>,
 ) -> Result<serde_json::Value, String> {
     let path = root(&workspace)?;
+    if path.to_string_lossy() != workspace_root {
+        return Err("Workspace changed; retry the action in the current project".into());
+    }
     let runtime = {
         let mut runtimes = tools.0.lock().map_err(|e| e.to_string())?;
         if !runtimes.contains_key(&path) {

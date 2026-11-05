@@ -33,3 +33,7 @@ src-tauri/target/
 .venv/
 __pycache__/
 *.pyc
+
+# Local UI captures and generated detector cache
+.impeccable/review/
+.impeccable/hook.cache.json

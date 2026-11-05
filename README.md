@@ -8,18 +8,20 @@ Shark's workspace runtime joins native Rust editing, Graphify code exploration a
 
 Run `npm run backend:setup` once, then `npm run backend:dev` for the JSON-lines gateway. Set backend provider credentials and pass a configured model ID to `agent/start` for model execution. Tests use the real ADK runner and Graphify extractor with an offline model. See [the runtime guide](docs/backend/runtime.md) and [native tool reference](docs/backend/README.md) for setup, protocol examples, limits and remaining work.
 
-## Current frontend preview
+## Current workbench
 
-Run `npm install` and `npm run dev`, then open `http://localhost:1420`. `npm run build` checks TypeScript and produces the production bundle.
+Run `npm install` and `npm run dev` for the browser workspace, or `npm run backend:setup` followed by `npm run tauri dev` for the native app. `npm run build` checks TypeScript and creates the production bundle.
 
-The conversation is the primary workspace. Create and search sessions (Ctrl/Cmd+K), describe work in the Build/Ask composer, and review the agent’s plan. Reviews open with a plain-language explanation, followed by optional syntax-highlighted Before/After code.
+The compact workbench has a stable activity rail and file explorer, a conversation composer, a real Monaco editor, a review pane, and an integrated terminal. Ctrl/Cmd+K or P finds files and actions, Ctrl/Cmd+S saves, Ctrl/Cmd+backtick toggles the terminal, and Ctrl/Cmd+Shift+F toggles focus mode. Settings provide comfortable spacing, text size, Verdana, higher contrast and reduced motion; compact spacing is the user-selected default.
 
-The Files tab includes an expandable project explorer, file filtering, new file creation, editor tabs, and a locally bundled Monaco editor with syntax highlighting, search, and Ctrl/Cmd+S. Unsaved files are marked, reloads warn about unsaved edits, and disk saves detect external changes. Use the header terminal button or Ctrl/Cmd+backtick to open the terminal.
+- **Browser:** edit and save the bundled project copy in localStorage, or connect a supported browser folder. The terminal is a limited browser console. Native agent actions explain that the desktop app is required; no simulated agent runs or sample approvals are shown.
+- **Desktop:** the task view connects to the shared workspace runtime. Configure backend credentials and enter a supported model ID in Settings. Tasks and events persist, proposed edits include impact summaries, and application uses the native version/journal checks. Unsaved editor changes in affected files block application; clean editor tabs and file inventory refresh afterward.
 
-- **Browser workspace:** starts with bundled project files. Saving persists edits in this browser. Open Folder connects a selected local folder in browsers that support the File System Access API; saving then writes to that folder. The browser console supports `help`, `pwd`, `ls`, `cd`, `cat`, `touch`, and `clear`.
-- **Tauri desktop:** `npm run tauri dev` opens the native app. Workspace commands read and write local project files; Open Folder accepts a project path. The terminal runs an interactive system shell through portable-pty, with streamed output, keyboard input, resizing, and cleanup. Standard Rust/Tauri system prerequisites are required.
+Graphify is **agent-only infrastructure**. There is no user-facing graph explorer, graph query UI or Context tab. Users inspect files and understandable review evidence while agents use the graph internally.
 
-Agent conversations, activity, and proposals are still simulated and reset on reload. Accepting a sample records only a session approval; it does not apply that sample to disk. Model connections, real agent streaming, and agent-driven changes remain integration work. Manual file editing and saving operate independently of the sample agent.
+The interface is informed by VS Code, Cursor and Antigravity, with WCAG 2.2 AA as a target. Automated browser checks are supplemented by keyboard and responsive checks; full assistive-technology conformance is not claimed. See [reference research](docs/design-references.md) and [accessibility verification](docs/accessibility.md).
+
+The current agent UI starts one task invocation at a time. In-thread follow-up steering, validation execution, broader model/CLI adapters, distributable runtime packaging and language-server semantic refactoring remain further work. Live model/provider execution requires user-configured credentials and has not been tested with billed calls.
 
 ---
 
