@@ -43,11 +43,12 @@ def shark_request_input(question: str) -> str:
 
 @server.tool()
 def shark_project(operation: str, parameters_json: str = "{}") -> str:
-    """Shark's built-in intelligence: status, index, structure, search(query), explain(path),
-    dependencies, impact(paths), quality, security, architecture, history, runtime,
-    context(query), artifact(id, section, offset). Returns revision-bound evidence and
-    explicit limitations. Search is ranked lexical; security matches are review candidates.
-    Runtime results require supplied measurements. Use artifact to page full report sections.
+    """Shark's built-in 10-category intelligence: status, index, structure, search(query),
+    semantic(query, path, symbol), explain(path, symbol), dependencies, sbom,
+    impact(paths, depth, symbol), quality, security, architecture(rules),
+    history(limit, symbol, path_filter), runtime, context(query, paths, error_text, symbol),
+    correlate_error(error_text), refactor_plan(paths, symbol, goal), connectors,
+    artifact(id, section, offset). Returns revision-bound evidence and explicit limitations.
     """
     from .codebase.gateway import READ_ONLY
     method = "intelligence/" + operation
@@ -61,14 +62,15 @@ def shark_project(operation: str, parameters_json: str = "{}") -> str:
 
 @server.tool()
 def shark_automata(operation: str, parameters_json: str = "{}") -> str:
-    """Shark Automata (visual workflows). Operations: catalog (components plus the file format; call this first),
-    list, get(id), validate(id), codegen(id), test_component(id), test_node(id, node_id, input), dry_run(id).
+    """Shark Automata (visual workflows). Operations: catalog (components, templates, plus the file format; call this first),
+    templates, list, get(id), validate(id), codegen(id), test_component(id), test_node(id, node_id, input), dry_run(id).
+    Includes all 10 Code Intelligence nodes (intel.structure, intel.dependencies, intel.semantic, intel.impact,
+    intel.quality, intel.security, intel.runtime, intel.architecture, intel.history, intel.context, intel.ast_grep, intel.gate).
     Write workflow and component files with your normal file tools in this private copy, then validate,
-    test_component and dry_run them and fix what fails. Dry runs never write files, run commands or send
-    non-GET requests. Real runs are the person's decision and are not available here.
+    test_component and dry_run them and fix what fails.
     """
-    if operation not in {"catalog", "list", "get", "validate", "codegen", "test_component", "test_node", "dry_run", "run_node"}:
-        raise ValueError("Choose catalog, list, get, validate, codegen, test_component, test_node or dry_run")
+    if operation not in {"catalog", "templates", "list", "get", "validate", "codegen", "test_component", "test_node", "dry_run", "run_node"}:
+        raise ValueError("Choose catalog, templates, list, get, validate, codegen, test_component, test_node or dry_run")
     params = json.loads(parameters_json)
     if not isinstance(params, dict):
         raise ValueError("parameters_json must be a JSON object")
@@ -83,10 +85,9 @@ def shark_static_tools() -> str:
 
 @server.tool()
 def shark_analyze(tool: str, pattern: str = "", language: str = "") -> str:
-    """Analyze current source without applying edits. Tools: python-syntax, code-stats,
-    ast-grep (requires pattern and language), semgrep, scc, ctags. Semgrep uses Shark's
-    offline eval rule, not a comprehensive security ruleset. External tools must be installed.
-    External output paths are relative to a temporary source/ snapshot of the workspace.
+    """Analyze current source without applying edits. Built-in tools: python-syntax, code-stats,
+    ast-grep-builtin (requires pattern and language), security-audit, dead-code, maintainability,
+    sql-check, sbom. Installed external tools: ast-grep, semgrep, scc, ctags.
     """
     return compact(call("tools/analyze", {"tool": tool, "pattern": pattern, "language": language}), limit=32000)
 

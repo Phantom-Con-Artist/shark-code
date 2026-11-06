@@ -185,6 +185,106 @@ class CodebaseTests(unittest.TestCase):
         self.assertGreater(row['churn'],0)
         self.assertEqual(row['contributors'][0]['name'],'Fixture')
         self.assertTrue(data['cochange'])
+        self.assertIn('bug_proneness',data)
+        self.assertIn('trends',data)
+
+    def test_all_ten_categories_extended_intelligence(self):
+        # Add files exercising TypeScript path aliases, SQL queries, HTTP routes, duplicates, dead code, LCOM4, and taint flows
+        (self.root/'tsconfig.json').write_text(json.dumps({
+            'compilerOptions': {'baseUrl': '.', 'paths': {'@shared/*': ['src/*']}}
+        }))
+        (self.root/'src/aliased.ts').write_text('import { helper } from "@shared/helper";\nexport const callHelper = () => helper();\n')
+        (self.root/'src/helper.ts').write_text('export const helper = () => 42;\n')
+        (self.root/'src/api.py').write_text(
+            'import sqlite3\nimport subprocess\nfrom flask import Flask, request\napp = Flask(__name__)\n\n'
+            '@app.get("/users")\n'
+            'def get_users(limit: int = 10) -> list:\n'
+            '    """Fetch users.\n    :param limit: Max rows\n    :param stale_param: Documented but removed\n    """\n'
+            '    cmd = request.args.get("cmd")\n'
+            '    subprocess.run(cmd, shell=True)\n'
+            '    conn = sqlite3.connect(":memory:")\n'
+            '    for i in range(limit):\n'
+            '        conn.execute("SELECT id, email FROM users WHERE active = 1")\n'
+            '    return []\n\n'
+            'class DisjointService:\n'
+            '    def __init__(self):\n'
+            '        self.a = 1\n'
+            '        self.b = 2\n'
+            '        self.c = 3\n'
+            '        self.d = 4\n'
+            '    def use_a(self):\n'
+            '        return self.a + 1\n'
+            '    def use_b(self):\n'
+            '        return self.b + 2\n'
+            '    def use_c(self):\n'
+            '        return self.c + 3\n'
+            '    def use_d(self):\n'
+            '        return self.d + 4\n\n'
+            'def clone_one(x, y):\n'
+            '    total = x + y\n'
+            '    if total > 10:\n'
+            '        return total * 2\n'
+            '    return total - 1\n\n'
+            'def clone_two(a, b):\n'
+            '    res = a + b\n'
+            '    if res > 10:\n'
+            '        return res * 2\n'
+            '    return res - 1\n'
+        )
+        # 1. Structure: rich signatures, contracts, SQL tables, incremental cache, tsconfig aliases
+        struct = self.call('structure')['data']
+        self.assertTrue(struct['path_aliases'])
+        self.assertTrue(any(c.get('endpoint') == '/users' for c in struct['contracts']))
+        self.assertIn('users', struct['sql_schema']['tables'])
+        # 2. Dependencies: unused dependencies, module_edges with alias resolution, license summary, SBOM
+        deps = self.call('dependencies')['data']
+        self.assertTrue(any(e['source'] == 'src/aliased.ts' and e['target'] == 'src/helper.ts' for e in deps['module_edges']))
+        self.assertTrue(any(u['name'] == 'react' for u in deps['unused_dependencies']))
+        self.assertIn('license_summary', deps)
+        sbom = self.call('sbom')['data']
+        self.assertEqual(sbom['bomFormat'], 'CycloneDX')
+        self.assertTrue(any(c['name'] == 'react' for c in sbom['components']))
+        # 3. Semantic: concept search, duplicates, patterns, behavioral explanation
+        sem = self.call('semantic', query='fetch users database')['data']
+        self.assertTrue(sem['search']['matches'])
+        self.assertTrue(any({'clone_one', 'clone_two'}.issubset({loc['symbol'] for loc in d['locations']}) for d in sem['semantic_duplicates']))
+        explained = self.call('explain', path='src/api.py')['data']
+        self.assertIn('behavioral', explained)
+        # 4. Impact: resolved call graph, contract breaks, schema validation
+        impact = self.call('impact', paths=['src/math.py'])['data']
+        self.assertIn('symbol_callers', impact)
+        self.assertIn('schema_compatibility', impact)
+        # 5. Quality: Halstead/Maintainability Index, LCOM4 cohesion, dead code, technical debt
+        quality = self.call('quality')['data']
+        self.assertTrue(quality['module_reports'])
+        self.assertTrue(any(c['class'] == 'DisjointService' and c['lcom4'] >= 2 for c in quality['cohesion']))
+        self.assertTrue(quality['technical_debt']['prioritized_items'])
+        # 6. Security: taint flows, ast-grep rules, permission surface
+        sec = self.call('security')['data']
+        self.assertTrue(sec['taint_flows'] or any('taint' in f['rule'] for f in sec['findings']))
+        self.assertIn('permission_audit', sec)
+        # 7. Runtime: static bottlenecks (SQL in loop) + active runtime profile collection
+        rt_before = self.call('runtime')['data']
+        self.assertTrue(any(b['path'] == 'src/api.py' for b in rt_before['static_bottlenecks']))
+        prof = self.call('runtime/collect', paths=['src/math.py'])
+        self.assertGreaterEqual(prof['imported'], 1)
+        # 8. Architecture: inferred layers, Martin coupling metrics, doc consistency, baseline save
+        arch = self.call('architecture')['data']
+        self.assertTrue(arch['inferred_layers'])
+        self.assertIn('coupling_metrics', arch)
+        self.assertTrue(any('stale_param' in d.get('stale_doc_params', []) for d in arch['documentation_consistency']['stale_docstring_params']))
+        saved_base = self.call('baseline/save')
+        self.assertTrue(saved_base['saved'])
+        # 10. Agentic Workflows: correlate_error, refactor_plan, connectors
+        tb = f'Traceback (most recent call last):\n  File "{self.root}/src/app.py", line 4, in run\n    return add(1, 2)\n  File "{self.root}/src/math.py", line 6, in add\n    return a + b\nTypeError: unsupported operand'
+        corr = self.call('correlate_error', error_text=tb)['data']
+        self.assertEqual(corr['frames'][0]['workspace_path'], 'src/app.py')
+        self.assertEqual(corr['root_cause_candidate']['function'], 'add')
+        plan = self.call('refactor_plan', paths=['src/math.py'], symbol='add', goal='Rename add to sum_values')['data']
+        self.assertGreaterEqual(len(plan['steps']), 2)
+        conn = self.call('connectors')['data']
+        self.assertIn('mcp_servers', conn)
+        self.assertEqual(conn['builtin_mcp_endpoint'], 'shark-code-mcp')
 
 
 class SyntaxTests(unittest.TestCase):
@@ -194,7 +294,13 @@ class SyntaxTests(unittest.TestCase):
                                ('x.rs','trait A {}\nstruct B {}\nfn f() {}','A'),
                                ('x.go','package main\nfunc main() {}','main'),
                                ('x.java','class A { void f() {} }','A'),
-                               ('x.cpp','class A {};\nint f() { return 1; }','A')]:
+                               ('x.cpp','class A {};\nint f() { return 1; }','A'),
+                               ('x.kt','class A { fun f() {} }','A'),
+                               ('x.php','<?php class A { function f() {} }','A'),
+                               ('x.scala','class A { def f() = 1 }','A'),
+                               ('x.lua','function f() return 1 end','f'),
+                               ('x.sh','f() {\n  echo 1\n}\n','f'),
+                               ('x.zig','pub fn f() void {}\n','f')]:
             with self.subTest(path=path):
                 record=parse(path,text)
                 self.assertEqual(record['parser'],'tree-sitter')

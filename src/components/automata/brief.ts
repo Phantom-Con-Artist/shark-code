@@ -7,8 +7,10 @@ export function automataBrief(): string {
   const parts = [
     'You are working in Shark Automata, the visual workflow canvas. Workflows are plain files in the project, so create or edit them with your file tools; ' +
     'the person reviews your proposal before anything is applied and the canvas reloads from the files.',
-    'Call the shark_automata tool with operation "catalog" first for the component list and exact file format. Build any missing component as ' +
-    'automata/components/<id>.component.json with tests, then use test_component, validate and dry_run and fix failures before you finish. ' +
+    'Call the shark_automata tool with operation "catalog" first for the component list, built-in templates, and exact file format. ' +
+    'Automata includes all 10 Codebase Intelligence components out of the box: intel.structure, intel.dependencies, intel.semantic, ' +
+    'intel.impact, intel.quality, intel.security, intel.runtime, intel.architecture, intel.history, intel.context, plus intel.ast_grep and intel.gate (outputs pass/fail). ' +
+    'Build any custom component as automata/components/<id>.component.json with tests, then use test_component, validate and dry_run and fix failures before you finish. ' +
     'Keep steps small and named by what they do. Add human.approval before any step that writes files, runs commands or calls an external service with side effects. ' +
     'Never claim a test passed unless a tool result shows it. Real runs are the person\'s decision.',
   ];

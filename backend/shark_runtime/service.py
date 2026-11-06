@@ -26,7 +26,7 @@ APP_TOOLS |= {"intelligence/" + operation for operation in OPERATIONS}
 APP_TOOLS |= {"workflow/" + operation for operation in ("create", "get", "step", "start", "resume", "pause", "cancel", "respond", "replan", "ask")}
 
 
-AUTOMATA_METHODS = {"catalog", "list", "get", "save", "delete", "validate", "codegen", "export", "run", "dry_run", "run_get", "run_node", "runs",
+AUTOMATA_METHODS = {"catalog", "templates", "list", "get", "save", "delete", "validate", "codegen", "export", "run", "dry_run", "run_get", "run_node", "runs",
                     "respond", "resume", "cancel", "test_node", "test_component"}
 APP_TOOLS |= {"automata/" + operation for operation in AUTOMATA_METHODS}
 
@@ -285,6 +285,9 @@ class Service:
         if op == "catalog":
             self.fields(p)
             return engine.catalog()
+        if op == "templates":
+            self.fields(p)
+            return engine.templates()
         if op == "list":
             self.fields(p)
             return engine.list()

@@ -80,6 +80,38 @@ class StaticAnalysisTests(unittest.TestCase):
             tools = self.service.execute('tools/detect', {})['tools']
         self.assertTrue(all(t['available'] and t['callable'] for t in tools if t.get('builtin')))
 
+    def test_bundled_intelligence_analyzers_run_in_process(self):
+        (self.root / 'query.py').write_text(
+            'import subprocess\n'
+            'def run_query(cmd):\n'
+            '    subprocess.run(cmd, shell=True)\n'
+            '    sql = "SELECT id, name FROM accounts WHERE active = 1"\n'
+            '    return sql\n'
+        )
+        ag = self.service.execute('tools/analyze', {'tool': 'ast-grep-builtin', 'pattern': 'subprocess.run($CMD, shell=True)', 'language': 'python'})
+        self.assertEqual(ag['status'], 'completed')
+        self.assertGreaterEqual(len(ag['findings']), 1)
+
+        sec = self.service.execute('tools/analyze', {'tool': 'security-audit'})
+        self.assertEqual(sec['status'], 'completed')
+        self.assertTrue(any(f['rule'] == 'shell-execution' for f in sec['findings']))
+
+        dc = self.service.execute('tools/analyze', {'tool': 'dead-code'})
+        self.assertEqual(dc['status'], 'completed')
+        self.assertIn('findings', dc)
+
+        mi = self.service.execute('tools/analyze', {'tool': 'maintainability'})
+        self.assertEqual(mi['status'], 'completed')
+        self.assertTrue(mi['findings'])
+
+        sql = self.service.execute('tools/analyze', {'tool': 'sql-check'})
+        self.assertEqual(sql['status'], 'completed')
+        self.assertTrue(any('accounts' in q.get('tables', []) for q in sql['findings']))
+
+        sbom = self.service.execute('tools/analyze', {'tool': 'sbom'})
+        self.assertEqual(sbom['status'], 'completed')
+        self.assertEqual(sbom['statistics']['sbom']['bomFormat'], 'CycloneDX')
+
 
 if __name__ == '__main__':
     unittest.main()

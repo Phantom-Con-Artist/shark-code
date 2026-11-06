@@ -103,6 +103,13 @@ class Orchestrator:
                         return [['npm', 'run', name]]
         except (Fault, ValueError, AttributeError):
             pass
+        root = self.service.core.root
+        if (root / 'Cargo.toml').is_file():
+            return [['cargo', 'test']]
+        if (root / 'go.mod').is_file():
+            return [['go', 'test', './...']]
+        if (root / 'pyproject.toml').is_file() or (root / 'pytest.ini').is_file():
+            return [['python3', '-m', 'unittest', 'discover']]
         return []
 
     def _public(self, record, offset=0, limit=32):

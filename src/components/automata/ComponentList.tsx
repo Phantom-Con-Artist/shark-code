@@ -6,7 +6,7 @@ import { sharkAutomata, type ComponentSpec, type ComponentTest } from '../../lib
 import { ComponentIcon } from './icons';
 import { canvasCenter, revealOnCanvas, DRAG_TYPE } from './Canvas';
 
-const ORDER = ['Triggers', 'Data', 'Flow', 'Integrations', 'System', 'Human', 'AI'];
+const ORDER = ['Triggers', 'Code Intelligence', 'Data', 'Flow', 'Integrations', 'System', 'Human', 'AI'];
 
 export function ComponentList() {
   const a = useAutomata();

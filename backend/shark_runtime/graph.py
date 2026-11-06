@@ -15,6 +15,7 @@ from pathlib import Path
 from .core import Core, Fault, confined, write_json
 
 CODE = {".py", ".pyi", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".rs", ".go", ".java", ".c", ".h", ".cpp", ".hpp", ".cs", ".rb", ".php", ".kt", ".swift", ".scala"}
+WEB_ASSETS = {".html", ".htm", ".css"}
 CONFIG = {"package.json", "tsconfig.json", "jsconfig.json", "Cargo.toml", "go.mod", "pyproject.toml"}
 # Structural containment is useful for navigation, but must never turn a single
 # changed symbol into an assertion that every symbol in its file is affected.
@@ -53,7 +54,7 @@ class Graph:
 
     def snapshot(self) -> dict:
         snapshot = self.core.call("workspace/snapshot")
-        selected = [f for f in snapshot["files"] if Path(f["path"]).suffix in CODE or Path(f["path"]).name in CONFIG]
+        selected = [f for f in snapshot["files"] if Path(f["path"]).suffix in (CODE | WEB_ASSETS) or Path(f["path"]).name in CONFIG]
         if len(selected) > 5000:
             raise Fault("graph_too_large", "Choose a workspace with at most 5,000 graph input files")
         signature = json.dumps(["shark-graph-v1", self.version, selected, snapshot["skipped"]], sort_keys=True).encode()
@@ -82,7 +83,8 @@ class Graph:
                     # the native boundary, not arbitrary files from the live tree.
                     artifact = self.core.root / ".shark" / "artifacts" / f["artifact_id"]
                     target.write_bytes(artifact.read_bytes())
-                request = {"root": str(root), "files": [f["path"] for f in snapshot["files"]], "cache": str(self.directory)}
+                worker_files = [f["path"] for f in snapshot["files"] if Path(f["path"]).suffix in CODE or Path(f["path"]).name in CONFIG]
+                request = {"root": str(root), "files": worker_files, "cache": str(self.directory)}
                 with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as diagnostics:
                     try:
                         process = subprocess.run([sys.executable, "--graph-worker"] if getattr(sys, "frozen", False) else [sys.executable, "-m", "shark_runtime.graph_worker"],
@@ -134,6 +136,49 @@ class Graph:
             edges.append({"source": src, "target": dst, "relation": str(row.get("relation", "related"))[:100],
                 "confidence": confidence if confidence in ("EXTRACTED", "INFERRED") else "UNKNOWN",
                 "evidence": str(row.get("context") or row.get("description") or row.get("relation", ""))[:600]})
+        # Merge HTML resource links and alias-resolved module edges from Codebase Intelligence
+        try:
+            from .codebase import dependencies as cb_deps, engine as cb_engine, syntax as cb_syntax
+            sources = {}
+            for p in manifest:
+                try:
+                    sources[p] = (root / p).read_text(encoding="utf-8")
+                except (OSError, UnicodeError):
+                    pass
+            aliases = cb_deps.inventory(sources).get("aliases", [])
+            file_node_by_path = {}
+            for n in nodes:
+                if n.get("path") and n["path"] not in file_node_by_path:
+                    file_node_by_path[n["path"]] = n["id"]
+            for p, entry in manifest.items():
+                if p not in file_node_by_path:
+                    nid = f"file:{p}"
+                    nodes.append({
+                        "id": nid, "label": Path(p).name[:400], "kind": "module",
+                        "path": p, "location": f"{p}:1", "version": entry["version"],
+                        "artifact_id": entry["artifact_id"], "external": False,
+                    })
+                    ids.add(nid)
+                    file_node_by_path[p] = nid
+            existing_pairs = {(e["source"], e["target"], e["relation"]) for e in edges}
+            all_paths = set(manifest)
+            for p, text in sources.items():
+                parsed = cb_syntax.parse(p, text)
+                src_id = file_node_by_path.get(p)
+                if not src_id:
+                    continue
+                for imp in parsed.get("imports", []):
+                    resolved_target = cb_engine.resolve_import(p, imp, all_paths, aliases)
+                    dst_id = file_node_by_path.get(resolved_target) if resolved_target else None
+                    if dst_id and (src_id, dst_id, "imports") not in existing_pairs:
+                        existing_pairs.add((src_id, dst_id, "imports"))
+                        edges.append({
+                            "source": src_id, "target": dst_id, "relation": "imports",
+                            "confidence": "EXTRACTED",
+                            "evidence": f"{p}:{imp.get('line', 1)} imports {imp.get('source', '')}"[:600],
+                        })
+        except Exception:
+            pass
         if len(nodes) > 100000 or len(edges) > 300000:
             raise Fault("graph_too_large", "Graph exceeds 100,000 nodes or 300,000 edges")
         return {"schema_version": 1, "provider": "graphify", "provider_version": self.version,

@@ -66,7 +66,11 @@ def detect(root: Path) -> dict:
 def agent_note() -> str:
     """One line for engine briefs: which verified tools the agent can rely on."""
     found = _probe()
-    note = "\nSHARK STATIC ANALYSIS: tools/detect lists analyzers; tools/analyze runs built-in python-syntax and code-stats, or installed ast-grep, semgrep, scc and ctags. Use the Shark analysis tools for results."
+    note = (
+        "\nSHARK STATIC ANALYSIS: tools/detect lists analyzers; tools/analyze runs built-in "
+        "python-syntax, code-stats, ast-grep-builtin, security-audit, dead-code, maintainability, "
+        "sql-check, and sbom (all bundled out of the box), or installed ast-grep, semgrep, scc and ctags."
+    )
     if not found:
         return note
     names = {t["id"]: f"{found[t['id']]['binary']} ({t['purpose'].lower()})" for t in TOOLS if t["id"] in found}

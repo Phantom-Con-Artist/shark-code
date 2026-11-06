@@ -72,9 +72,145 @@ CATALOG = {c['type']: c for c in [
       icon='message'),
     C('ai.shark', 'Ask Shark', 'AI', 'Gives Shark a read-only task and uses its answer. Output: {text}.',
       [P('prompt', 'Prompt', 'code', 'Summarize: {{ input }}', required=True),
-       P('mode', 'Mode', 'select', 'explain', options=['explain', 'planner', 'review']), P('timeout', 'Timeout (seconds)', 'number', 300)],
+       P('mode', 'Mode', 'select', 'explain', options=['explain', 'planner', 'review']),
+       P('intelligence_context', 'Attach intelligence', 'select', 'none', options=['none', 'auto_context', 'structure', 'quality', 'security', 'architecture']),
+       P('timeout', 'Timeout (seconds)', 'number', 300)],
       icon='sparkles'),
+    # ---- 10 Codebase Intelligence Components -------------------------------------------------
+    C('intel.structure', '1. Structural scan', 'Code Intelligence',
+      'Extracts 21-language AST symbols, subsystems, entry points, compiler configs, RPC contracts, and SQL schema.',
+      [], icon='layers'),
+    C('intel.dependencies', '2. Dependency & SBOM', 'Code Intelligence',
+      'Analyzes manifests, lockfiles, alias imports, cycles, unused/undeclared packages, SemVer compatibility, licenses, and CycloneDX SBOM.',
+      [], icon='git-branch'),
+    C('intel.semantic', '3. Semantic & clones', 'Code Intelligence',
+      'Runs local LSA concept search, extracts domain concepts, recognizes design patterns, detects Type-1/2/3 clones, and explains behavior.',
+      [P('query', 'Concept query', 'text', '', 'Optional concept or question to search'),
+       P('path', 'File path', 'text', '', 'Optional file path for behavioral summary'),
+       P('symbol', 'Symbol name', 'text', '', 'Optional symbol name for behavioral summary'),
+       P('limit', 'Max matches', 'number', 15)], icon='search'),
+    C('intel.impact', '4. Change impact & risk', 'Code Intelligence',
+      'Calculates blast radius, cross-file symbol callers, affected contracts, SQL migration compatibility, tests, and calibrated risk score.',
+      [P('paths', 'Changed paths (JSON list)', 'json', '[]', 'Leave [] to use first workspace files or {{ input.paths }}'),
+       P('symbol', 'Symbol filter', 'text', ''),
+       P('depth', 'Max hop depth', 'number', 3)], icon='radar'),
+    C('intel.quality', '5. Quality & dead code', 'Code Intelligence',
+      'Computes cyclomatic/cognitive complexity, Radon Maintainability Index, LCOM4 cohesion, Vulture + reachability dead code, and debt triage.',
+      [], icon='gauge'),
+    C('intel.security', '6. Security & taint audit', 'Code Intelligence',
+      'Scans redacted secrets, bundled ast-grep rules, intra/cross-file taint flows, permission boundaries, and supply-chain advisories.',
+      [], icon='shield'),
+    C('intel.runtime', '7. Runtime & bottlenecks', 'Code Intelligence',
+      'Detects static performance bottlenecks (N+1 queries in loops, blocking IO in async) and optionally runs the bundled cProfile/tracemalloc profiler.',
+      [P('collect_profile', 'Run bundled profiler', 'bool', False, 'Profile workspace files with cProfile + tracemalloc')], icon='activity'),
+    C('intel.architecture', '8. Architecture & drift', 'Code Intelligence',
+      'Infers architectural layers, Robert C. Martin coupling/instability metrics, boundary violations, doc consistency, and Mermaid diagram.',
+      [P('rules', 'Boundary rules (JSON)', 'json', '[]', 'List of {"from_prefix": "...", "forbid_prefix": "..."}')], icon='compass'),
+    C('intel.history', '9. Git history & hotspots', 'Code Intelligence',
+      'Analyzes commits (Git + Dulwich), file churn, symbol evolution, bug-proneness scores, regression correlations, and complexity trends.',
+      [P('limit', 'Commit window', 'number', 50),
+       P('symbol', 'Symbol filter', 'text', ''),
+       P('path_filter', 'Path filter', 'text', '')], icon='history'),
+    C('intel.context', '10. Agent context & plan', 'Code Intelligence',
+      'Builds hybrid lexical+semantic context, stack-trace error correlation, dependency-ordered refactoring steps, and MCP connector inventory.',
+      [P('query', 'Task or question', 'text', 'project overview', required=True),
+       P('paths', 'Target paths (JSON)', 'json', '[]'),
+       P('error_text', 'Stack trace or error', 'code', ''),
+       P('symbol', 'Target symbol', 'text', '')], icon='cpu'),
+    C('intel.ast_grep', 'AST pattern search', 'Code Intelligence',
+      'Runs bundled ast-grep Tree-sitter structural search across workspace files without external CLI binaries.',
+      [P('pattern', 'AST pattern', 'code', 'def $FUNC($$$):', required=True),
+       P('language', 'Language', 'select', 'python', options=['python', 'typescript', 'tsx', 'javascript'])], icon='code'),
+    C('intel.gate', 'Intelligence gate', 'Code Intelligence',
+      'Evaluates quality, security, and architecture thresholds and routes to pass or fail.',
+      [P('max_security_findings', 'Max security findings', 'number', 0),
+       P('min_maintainability', 'Min maintainability index', 'number', 20),
+       P('max_cyclomatic', 'Max cyclomatic complexity', 'number', 25),
+       P('forbid_cycles', 'Forbid module cycles', 'bool', False)], outputs=('pass', 'fail'), icon='check-circle'),
 ]}
+
+TEMPLATES = [
+    {
+        'id': 'codebase-health-gate',
+        'name': 'Codebase Health & Security Gate',
+        'description': 'Runs Quality & Maintainability (Cat 5), Security & Taint Audit (Cat 6), and routes through an Intelligence Gate.',
+        'nodes': [
+            {'id': 'start', 'type': 'trigger.manual', 'label': 'Start audit', 'x': 80, 'y': 180, 'params': {'payload': '{}'}},
+            {'id': 'quality', 'type': 'intel.quality', 'label': 'Quality & dead code', 'x': 340, 'y': 100, 'params': {}},
+            {'id': 'security', 'type': 'intel.security', 'label': 'Security & taint', 'x': 340, 'y': 260, 'params': {}},
+            {'id': 'join', 'type': 'flow.merge', 'label': 'Combine evidence', 'x': 600, 'y': 180, 'params': {}},
+            {'id': 'gate', 'type': 'intel.gate', 'label': 'Verify thresholds', 'x': 860, 'y': 180,
+             'params': {'max_security_findings': 5, 'min_maintainability': 15, 'max_cyclomatic': 30, 'forbid_cycles': False}},
+            {'id': 'passed', 'type': 'data.template', 'label': 'Gate passed', 'x': 1120, 'y': 110,
+             'params': {'template': 'Health gate passed. Maintainability: {{ nodes.gate.maintainability_index }}, Security findings: {{ nodes.gate.security_findings }}'}},
+            {'id': 'failed', 'type': 'data.template', 'label': 'Gate failed', 'x': 1120, 'y': 260,
+             'params': {'template': 'Health gate failed: {{ nodes.gate.reasons }}'}},
+        ],
+        'edges': [
+            {'id': 'e1', 'from': 'start', 'from_port': 'out', 'to': 'quality'},
+            {'id': 'e2', 'from': 'start', 'from_port': 'out', 'to': 'security'},
+            {'id': 'e3', 'from': 'quality', 'from_port': 'out', 'to': 'join'},
+            {'id': 'e4', 'from': 'security', 'from_port': 'out', 'to': 'join'},
+            {'id': 'e5', 'from': 'join', 'from_port': 'out', 'to': 'gate'},
+            {'id': 'e6', 'from': 'gate', 'from_port': 'pass', 'to': 'passed'},
+            {'id': 'e7', 'from': 'gate', 'from_port': 'fail', 'to': 'failed'},
+        ],
+    },
+    {
+        'id': 'change-impact-and-refactor',
+        'name': 'Change Impact & Refactoring Planner',
+        'description': 'Analyzes blast radius, symbol callers, contracts (Cat 4), architectural layers (Cat 8), and generates a refactor plan (Cat 10).',
+        'nodes': [
+            {'id': 'start', 'type': 'trigger.manual', 'label': 'Select target', 'x': 80, 'y': 180, 'params': {'payload': '{"query": "intelligence gateway"}'}},
+            {'id': 'impact', 'type': 'intel.impact', 'label': 'Blast radius & risk', 'x': 340, 'y': 110, 'params': {'paths': '[]', 'symbol': '', 'depth': 3}},
+            {'id': 'arch', 'type': 'intel.architecture', 'label': 'Layers & coupling', 'x': 340, 'y': 260, 'params': {'rules': '[]'}},
+            {'id': 'plan', 'type': 'intel.context', 'label': 'Refactor plan', 'x': 620, 'y': 180,
+             'params': {'query': '{{ nodes.start.query }}', 'paths': '[]', 'error_text': '', 'symbol': ''}},
+        ],
+        'edges': [
+            {'id': 'e1', 'from': 'start', 'from_port': 'out', 'to': 'impact'},
+            {'id': 'e2', 'from': 'start', 'from_port': 'out', 'to': 'arch'},
+            {'id': 'e3', 'from': 'impact', 'from_port': 'out', 'to': 'plan'},
+        ],
+    },
+    {
+        'id': 'hotspot-and-bottleneck-radar',
+        'name': 'Hotspot, Bottleneck & Clone Radar',
+        'description': 'Combines Git bug-proneness hotspots (Cat 9), static performance bottlenecks (Cat 7), and semantic clones (Cat 3).',
+        'nodes': [
+            {'id': 'start', 'type': 'trigger.manual', 'label': 'Start radar', 'x': 80, 'y': 180, 'params': {'payload': '{}'}},
+            {'id': 'history', 'type': 'intel.history', 'label': 'Git hotspots', 'x': 340, 'y': 80, 'params': {'limit': 50, 'symbol': '', 'path_filter': ''}},
+            {'id': 'perf', 'type': 'intel.runtime', 'label': 'Bottlenecks & profile', 'x': 340, 'y': 200, 'params': {'collect_profile': True}},
+            {'id': 'semantic', 'type': 'intel.semantic', 'label': 'Clones & patterns', 'x': 340, 'y': 320, 'params': {'query': '', 'path': '', 'symbol': '', 'limit': 15}},
+            {'id': 'merge', 'type': 'flow.merge', 'label': 'Join radar report', 'x': 640, 'y': 200, 'params': {}},
+        ],
+        'edges': [
+            {'id': 'e1', 'from': 'start', 'from_port': 'out', 'to': 'history'},
+            {'id': 'e2', 'from': 'start', 'from_port': 'out', 'to': 'perf'},
+            {'id': 'e3', 'from': 'start', 'from_port': 'out', 'to': 'semantic'},
+            {'id': 'e4', 'from': 'history', 'from_port': 'out', 'to': 'merge'},
+            {'id': 'e5', 'from': 'perf', 'from_port': 'out', 'to': 'merge'},
+            {'id': 'e6', 'from': 'semantic', 'from_port': 'out', 'to': 'merge'},
+        ],
+    },
+    {
+        'id': 'dependency-and-sbom-audit',
+        'name': 'Dependency, License & SBOM Audit',
+        'description': 'Inspects manifests, lockfiles, unused dependencies, SemVer compatibility, licenses, advisories (Cat 2), and structure (Cat 1).',
+        'nodes': [
+            {'id': 'start', 'type': 'trigger.manual', 'label': 'Start audit', 'x': 80, 'y': 180, 'params': {'payload': '{}'}},
+            {'id': 'structure', 'type': 'intel.structure', 'label': 'Structure & configs', 'x': 340, 'y': 110, 'params': {}},
+            {'id': 'deps', 'type': 'intel.dependencies', 'label': 'Dependencies & SBOM', 'x': 340, 'y': 250, 'params': {}},
+            {'id': 'join', 'type': 'flow.merge', 'label': 'Combine inventory', 'x': 620, 'y': 180, 'params': {}},
+        ],
+        'edges': [
+            {'id': 'e1', 'from': 'start', 'from_port': 'out', 'to': 'structure'},
+            {'id': 'e2', 'from': 'start', 'from_port': 'out', 'to': 'deps'},
+            {'id': 'e3', 'from': 'structure', 'from_port': 'out', 'to': 'join'},
+            {'id': 'e4', 'from': 'deps', 'from_port': 'out', 'to': 'join'},
+        ],
+    },
+]
 
 
 def component_from_file(data: dict) -> dict:
@@ -381,6 +517,12 @@ def generate_code(graph, components):
                     "return input, 'approved' if answer.strip().lower() in ('y', 'yes') else 'rejected'"]
         elif kind == 'human.input':
             body = [f'return {{"answer": input_text(render({_py(g("question"))}, ctx) + " ")}}, "out"']
+        elif kind.startswith('intel.'):
+            body = [
+                f'params = render({_py(params)}, ctx)',
+                f'return {{"intelligence": {_py(kind)}, "params": params, "standalone": True}}, '
+                + ("'pass'" if kind == 'intel.gate' else "'out'"),
+            ]
         elif kind == 'ai.shark':
             body = ['raise NotImplementedError("Ask Shark needs the Shark app; this step cannot run standalone")']
         lines += ['    ' + sub for chunk in (body or ['return input, "out"']) for sub in chunk.split('\n')]

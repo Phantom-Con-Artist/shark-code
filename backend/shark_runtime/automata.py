@@ -22,7 +22,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-from .automata_spec import (CATALOG, EFFECTS, ID, SLUG, compare, component_from_file, generate_code, lookup, render,
+from .automata_spec import (CATALOG, EFFECTS, ID, SLUG, TEMPLATES, compare, component_from_file, generate_code, lookup, render,
                             validate_graph)
 from .core import Fault
 from .processes import group_options, terminate
@@ -97,8 +97,12 @@ class Automata:
         custom, problems = self.components()
         return {'components': [*CATALOG.values(), *custom.values()], 'problems': problems,
                 'categories': sorted({c['category'] for c in [*CATALOG.values(), *custom.values()]}),
+                'templates': TEMPLATES,
                 'graph_format': GRAPH_FORMAT,
                 'port_convention': "Custom components return the output value; to pick a non-default output return {'__port__': 'name', ...}"}
+
+    def templates(self):
+        return {'templates': TEMPLATES}
 
     def list(self):
         out = []
@@ -389,6 +393,8 @@ class Automata:
             if dry and not raw.get('run_ai_in_tests'):
                 return {'dry_run': True, 'would_ask': str(r('prompt'))[:300]}, 'out', 'Test run: Shark was not asked'
             return self._ask_shark(str(r('prompt')), raw, engine, check), 'out', logs
+        if kind.startswith('intel.'):
+            return self._execute_intelligence(kind, raw, r, json_param, ctx)
         if kind == 'data.code' or kind.startswith('custom.'):
             code = raw['code'] if kind == 'data.code' else spec['code']
             args = {'input': value, 'inputs': ctx['inputs'], 'params': render(raw, ctx) if kind != 'data.code' else {}, 'nodes': ctx['nodes'], 'vars': ctx['vars']}
@@ -402,11 +408,257 @@ class Automata:
             return result, port, logs
         raise Fault('unknown_component', f'No runner for {kind}')
 
+    def _execute_intelligence(self, kind: str, raw: dict, r, json_param, ctx: dict):
+        service = self.service
+        if kind == 'intel.structure':
+            rep = service.execute('intelligence/structure', {})
+            data = rep['data']
+            return {
+                'artifact_id': rep['artifact_id'],
+                'revision': rep['revision'],
+                'file_count': len(data.get('files', [])),
+                'symbol_count': len(data.get('symbols', [])),
+                'languages': data.get('languages', {}),
+                'frameworks': data.get('frameworks', []),
+                'subsystems': data.get('subsystems', []),
+                'entry_point_candidates': data.get('entry_point_candidates', []),
+                'contracts': data.get('contracts', [])[:30],
+                'sql_schema': data.get('sql_schema', {}),
+            }, 'out', f"Indexed {len(data.get('files', []))} files and {len(data.get('symbols', []))} symbols"
+        if kind == 'intel.dependencies':
+            rep = service.execute('intelligence/dependencies', {})
+            data = rep['data']
+            return {
+                'artifact_id': rep['artifact_id'],
+                'revision': rep['revision'],
+                'declarations_count': len(data.get('declarations', [])),
+                'locked_packages_count': len(data.get('packages', [])),
+                'unused_dependencies': data.get('unused_dependencies', []),
+                'undeclared_imports': data.get('undeclared_imports', []),
+                'compatibility_issues': data.get('compatibility_issues', []),
+                'peer_conflicts': data.get('peer_conflicts', []),
+                'cycles': data.get('cycles', []),
+                'license_summary': data.get('license_summary', {}),
+                'bundled_advisories': data.get('bundled_advisories', {}),
+                'sbom_component_count': (data.get('sbom') or {}).get('component_count', 0),
+            }, 'out', f"Checked {len(data.get('declarations', []))} declarations and {len(data.get('packages', []))} locked packages"
+        if kind == 'intel.semantic':
+            q = str(r('query') or '').strip()
+            p = str(r('path') or '').strip()
+            s = str(r('symbol') or '').strip()
+            lim = max(1, min(50, int(raw.get('limit') or 15)))
+            params = {'limit': lim}
+            if q:
+                params['query'] = q
+            if p:
+                params['path'] = p
+            if s:
+                params['symbol'] = s
+            rep = service.execute('intelligence/semantic', params)
+            data = rep['data']
+            return {
+                'artifact_id': rep['artifact_id'],
+                'revision': rep['revision'],
+                'embedding_model': data.get('embedding_model'),
+                'search': data.get('search'),
+                'behavioral': data.get('behavioral'),
+                'domain_concepts': data.get('domain_concepts', [])[:15],
+                'design_patterns': data.get('design_patterns', [])[:20],
+                'semantic_duplicates': data.get('semantic_duplicates', [])[:20],
+            }, 'out', f"Extracted {len(data.get('domain_concepts', []))} domain concepts and {len(data.get('semantic_duplicates', []))} semantic clones"
+        if kind == 'intel.impact':
+            paths_val = json_param('paths')
+            if not isinstance(paths_val, list) or not paths_val:
+                # Fallback to input.paths or first workspace files
+                in_paths = ctx.get('input', {}).get('paths') if isinstance(ctx.get('input'), dict) else None
+                if isinstance(in_paths, list) and in_paths:
+                    paths_val = [str(x) for x in in_paths[:20]]
+                else:
+                    service.intelligence.ensure()
+                    paths_val = sorted(service.intelligence.sources.keys())[:5]
+            if not paths_val:
+                return {'changed_paths': [], 'affected': [], 'risk': {'score': 0, 'level': 'low'}}, 'out', 'No workspace files to analyze'
+            depth = max(1, min(8, int(raw.get('depth') or 3)))
+            sym = str(r('symbol') or '').strip() or None
+            params = {'paths': paths_val, 'depth': depth}
+            if sym:
+                params['symbol'] = sym
+            rep = service.execute('intelligence/impact', params)
+            data = rep['data']
+            return {
+                'artifact_id': rep['artifact_id'],
+                'revision': rep['revision'],
+                'changed_paths': data.get('changed_paths', []),
+                'affected_count': len(data.get('affected', [])),
+                'affected': data.get('affected', [])[:25],
+                'symbol_callers': data.get('symbol_callers', [])[:25],
+                'affected_contracts': data.get('affected_contracts', []),
+                'schema_compatibility': data.get('schema_compatibility', {}),
+                'relevant_tests': data.get('relevant_tests', []),
+                'risk': data.get('risk', {}),
+            }, 'out', f"Impact risk: {(data.get('risk') or {}).get('level', 'low')} ({len(data.get('affected', []))} affected modules)"
+        if kind == 'intel.quality':
+            rep = service.execute('intelligence/quality', {})
+            data = rep['data']
+            return {
+                'artifact_id': rep['artifact_id'],
+                'revision': rep['revision'],
+                'finding_count': len(data.get('findings', [])),
+                'findings': data.get('findings', [])[:30],
+                'maintainability': data.get('maintainability', {}),
+                'dead_code': data.get('dead_code', {}),
+                'cohesion': data.get('cohesion', [])[:20],
+                'technical_debt': data.get('technical_debt', {}),
+                'duplicate_candidates_count': len(data.get('duplicate_candidates', [])),
+            }, 'out', f"Quality: {len(data.get('findings', []))} findings, avg MI {(data.get('maintainability') or {}).get('average_index', 0)}"
+        if kind == 'intel.security':
+            rep = service.execute('intelligence/security', {})
+            data = rep['data']
+            return {
+                'artifact_id': rep['artifact_id'],
+                'revision': rep['revision'],
+                'finding_count': len(data.get('findings', [])),
+                'findings': data.get('findings', [])[:30],
+                'taint_flows': data.get('taint_flows', [])[:20],
+                'permission_audit': data.get('permission_audit', {}),
+                'supply_chain': data.get('supply_chain', {}),
+                'bundled_dependency_advisories': data.get('bundled_dependency_advisories', {}),
+            }, 'out', f"Security: {len(data.get('findings', []))} findings, {len(data.get('taint_flows', []))} taint flows"
+        if kind == 'intel.runtime':
+            if raw.get('collect_profile'):
+                service.execute('intelligence/runtime/collect', {})
+            rep = service.execute('intelligence/runtime', {})
+            data = rep['data']
+            return {
+                'artifact_id': rep['artifact_id'],
+                'revision': rep['revision'],
+                'available': data.get('available', False),
+                'aggregate_observations': data.get('aggregate_observations', {}),
+                'static_bottlenecks': data.get('static_bottlenecks', [])[:30],
+                'event_count': len(data.get('events', [])),
+            }, 'out', f"Runtime: {len(data.get('static_bottlenecks', []))} static bottlenecks, {len(data.get('events', []))} trace events"
+        if kind == 'intel.architecture':
+            rules = json_param('rules') or []
+            rep = service.execute('intelligence/architecture', {'rules': rules if isinstance(rules, list) else []})
+            data = rep['data']
+            return {
+                'artifact_id': rep['artifact_id'],
+                'revision': rep['revision'],
+                'modules': data.get('modules', []),
+                'inferred_layers': data.get('inferred_layers', {}),
+                'coupling_metrics': data.get('coupling_metrics', [])[:25],
+                'inferred_layer_violations': data.get('inferred_layer_violations', []),
+                'violations': data.get('violations', []),
+                'cycles': data.get('cycles', []),
+                'documentation_consistency': data.get('documentation_consistency', {}),
+                'diagram': data.get('diagram', ''),
+            }, 'out', f"Architecture: {len(data.get('modules', []))} modules, {len(data.get('cycles', []))} cycles"
+        if kind == 'intel.history':
+            lim = max(1, min(200, int(raw.get('limit') or 50)))
+            params = {'limit': lim}
+            sym = str(r('symbol') or '').strip()
+            pf = str(r('path_filter') or '').strip()
+            if sym:
+                params['symbol'] = sym
+            if pf:
+                params['path_filter'] = pf
+            rep = service.execute('intelligence/history', params)
+            data = rep['data']
+            return {
+                'artifact_id': rep['artifact_id'],
+                'revision': rep['revision'],
+                'available': data.get('available', False),
+                'commit_count': len(data.get('commits', [])),
+                'hotspots': data.get('files', [])[:15],
+                'bug_proneness': data.get('bug_proneness', [])[:15],
+                'regressions': data.get('regressions', [])[:15],
+                'symbol_history': data.get('symbol_history', [])[:15],
+                'trends': data.get('trends', {}),
+            }, 'out', f"History: {len(data.get('commits', []))} commits analyzed"
+        if kind == 'intel.context':
+            q = str(r('query') or 'project overview').strip()
+            paths_val = json_param('paths')
+            err_txt = str(r('error_text') or '').strip()
+            sym = str(r('symbol') or '').strip()
+            params = {'query': q}
+            if isinstance(paths_val, list) and paths_val:
+                params['paths'] = [str(x) for x in paths_val[:15]]
+            if err_txt:
+                params['error_text'] = err_txt
+            if sym:
+                params['symbol'] = sym
+            rep = service.execute('intelligence/context', params)
+            data = rep['data']
+            return {
+                'artifact_id': rep['artifact_id'],
+                'revision': rep['revision'],
+                'retrieval_matches': [m['path'] for m in (data.get('retrieval') or {}).get('matches', [])[:10]],
+                'semantic_matches': [m['path'] for m in (data.get('retrieval') or {}).get('semantic_matches', [])[:10]],
+                'impact_risk': ((data.get('impact') or {}).get('risk') or {}),
+                'error_correlation': data.get('error_correlation'),
+                'refactor_plan': data.get('refactor_plan'),
+                'connectors': data.get('connectors'),
+            }, 'out', f"Packaged agent context for '{q[:50]}'"
+        if kind == 'intel.ast_grep':
+            pat = str(r('pattern') or '').strip()
+            lang = str(raw.get('language') or 'python').strip()
+            res = service.execute('tools/analyze', {'tool': 'ast-grep-builtin', 'pattern': pat, 'language': lang})
+            return {
+                'pattern': pat,
+                'language': lang,
+                'match_count': len(res.get('findings', [])),
+                'matches': res.get('findings', [])[:50],
+            }, 'out', f"Found {len(res.get('findings', []))} AST matches"
+        if kind == 'intel.gate':
+            qual = service.execute('intelligence/quality', {})['data']
+            sec = service.execute('intelligence/security', {})['data']
+            arch = service.execute('intelligence/architecture', {})['data']
+            sec_count = len(sec.get('findings', []))
+            avg_mi = float((qual.get('maintainability') or {}).get('average_index', 100.0))
+            max_cc = max((m.get('cyclomatic_syntax', 1) for m in qual.get('metrics', [])), default=1)
+            cycles = arch.get('cycles', [])
+            max_sec_allowed = int(raw.get('max_security_findings') if raw.get('max_security_findings') is not None else 0)
+            min_mi_allowed = float(raw.get('min_maintainability') if raw.get('min_maintainability') is not None else 20.0)
+            max_cc_allowed = int(raw.get('max_cyclomatic') if raw.get('max_cyclomatic') is not None else 25)
+            forbid_cycles = bool(raw.get('forbid_cycles'))
+            reasons = []
+            if sec_count > max_sec_allowed:
+                reasons.append(f'security findings ({sec_count}) > max ({max_sec_allowed})')
+            if avg_mi < min_mi_allowed:
+                reasons.append(f'maintainability index ({avg_mi}) < min ({min_mi_allowed})')
+            if max_cc > max_cc_allowed:
+                reasons.append(f'max cyclomatic ({max_cc}) > max ({max_cc_allowed})')
+            if forbid_cycles and cycles:
+                reasons.append(f'{len(cycles)} module dependency cycle(s) detected')
+            passed = len(reasons) == 0
+            port = 'pass' if passed else 'fail'
+            return {
+                'passed': passed,
+                'security_findings': sec_count,
+                'maintainability_index': avg_mi,
+                'max_cyclomatic': max_cc,
+                'cycle_count': len(cycles),
+                'reasons': reasons,
+            }, port, ('Gate passed' if passed else f"Gate failed: {'; '.join(reasons)}")
+        raise Fault('unknown_component', f'Unknown intelligence component {kind}')
+
     def _ask_shark(self, prompt, raw, engine, check):
         if not engine or not engine.get('provider') or not engine.get('model'):
             raise Fault('engine_unconfigured', 'Pick an engine in Settings to use Ask Shark nodes')
         service = self.service
-        task = service.execute('task/create', {'goal': prompt[:12000]})
+        intel_mode = raw.get('intelligence_context', 'none')
+        full_prompt = prompt
+        if intel_mode and intel_mode != 'none':
+            try:
+                if intel_mode == 'auto_context':
+                    rep = service.execute('intelligence/context', {'query': prompt[:300]})['data']
+                else:
+                    rep = service.execute(f'intelligence/{intel_mode}', {})['data']
+                snippet = json.dumps(rep, ensure_ascii=False, default=str)[:3500]
+                full_prompt = f"{prompt}\n\n[Attached Shark Codebase Intelligence ({intel_mode})]:\n{snippet}"
+            except Exception:
+                pass
+        task = service.execute('task/create', {'goal': full_prompt[:12000]})
         credentials = {'api_key': self.credentials[engine['run_id']]} if self.credentials.get(engine.get('run_id')) else {}
         service.execute('agent/start', {'id': task['id'], 'provider': engine['provider'], 'model': engine['model'], 'effort': engine.get('effort', ''),
                                          'mode': raw.get('mode', 'explain'), **credentials})

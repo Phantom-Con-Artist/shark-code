@@ -67,22 +67,17 @@ You can run the same request on several engines at once from the mode menu ("Als
 - Final source application still requires human review. Restarted runs resume explicitly from saved checkpoints.
 - See [orchestration](docs/architecture/orchestration.md) for APIs, budgets and execution limits.
 
-**Code intelligence**
-- Code graph built from your source, used to give engines relevant code before they start.
-- Blast radius: see what depends on a file before you or the agent change it.
-- CLI engines get Shark's tools live through an MCP server: graph search, impact, text search, outlines, git status, static analysis and page checks. API engines use the same analysis API.
-- Built-in Python syntax checks and code statistics work without installing extra tools. Installed ast-grep, Semgrep, scc and Universal Ctags are callable by engines, with availability reported by `tools/detect`.
-- Analysis uses the current workspace. External scans use a disposable source snapshot, bounded to 16 MiB, with a 60-second timeout and bounded output. Results report skipped files and truncation. Semgrep uses a bundled offline dynamic-eval rule; this is a focused check, not a full security audit.
-
-**Built-in project intelligence**
-- A persistent local index with bundled syntax grammars, symbols, imports, environment references, configuration inventory and ranked text retrieval.
-- Manifest/lockfile inventory, relative-import dependencies, cycles, coupling, reverse impact paths and test suggestions.
-- Explainable quality metrics, redacted security review candidates, declarative architecture rules and Git churn/co-change reports.
-- Revision-bound reports shared by CLI engines, API engines and the desktop API. Large reports remain available as paginated artifacts.
-- CLI tools inspect their own candidate copy. Candidate evidence is retained, and concurrent user edits prevent proposal creation.
-- Release builds include Chromium and run a bundled component self-check.
-
-The full ten-category intelligence specification is **not complete**. See [core capability status](docs/architecture/core-capability-status.md) for supported behavior and remaining work. `intelligence/status` reports current coverage and limitations; no clean scan is presented as proof of security or runtime correctness.
+**Code intelligence (all 10 categories bundled)**
+- **Structural & AST (17 languages):** Bundled Tree-sitter grammars for Python, TypeScript, TSX, JavaScript, Rust, Go, Java, C, C++, C#, Ruby, Kotlin, PHP, Scala, Lua, Bash/Shell and Zig with incremental AST caching, rich symbol signatures, RPC/HTTP contracts, SQL schema/query extraction (`sqlglot`), and subsystem clustering.
+- **Dependencies & SBOM:** `tsconfig`/`jsconfig` alias resolution, workspace manifests, verified unused packages and undeclared imports, SemVer/PEP-440 compatibility and peer conflict solver (`packaging`), bundled offline OSV advisories, license classification and CycloneDX 1.5 SBOM generation.
+- **Semantic & Intent:** Local dense LSA/SVD concept & identifier vector search (`numpy`) alongside FTS5 BM25 lexical search, domain vocabulary extraction, Type-1/2/3 AST clone detection (`rapidfuzz`), design pattern detection and behavioral explanations.
+- **Change Impact:** Unified Graphify blast-radius and module graph (including HTML `<script>`/`<link>` and path aliases), cross-file caller resolution, base-vs-candidate semantic diff, contract break checks, SQL migration validation and calibrated regression risk scoring.
+- **Quality & Debt:** Standardized Sonar-style cognitive complexity, Radon Halstead & SEI Maintainability Index (`radon`), LCOM4 class cohesion (`networkx`), whole-program dead-code analysis (`vulture` + call reachability), docstring consistency (`docstring_parser`), prioritized technical debt and historical baselines.
+- **Security & Supply Chain:** Bundled `ast-grep-py` structural rules, intra-procedural and cross-file taint flow tracking, route permission boundary audit, Rust `unsafe`/FFI and C memory review locations, lockfile integrity verification and redacted secret scanning.
+- **Runtime & Performance:** Built-in `cProfile` + `tracemalloc` profiler (`intelligence/runtime/collect`), static bottleneck detector (N+1 queries/IO in loops, blocking calls in async), revision-bound runtime event ingestion and bundled Playwright Chromium checks.
+- **Architecture & Git History:** Architectural layer inference, Robert C. Martin coupling metrics (`Ca`, `Ce`, instability, abstractness, distance), boundary rules, pure-Python Git history (`dulwich`), symbol evolution, bug-proneness scoring and regression correlation.
+- **Agent & Shark Automata Integration:** Stack-trace error correlation (`intelligence/correlate_error`), multi-file refactoring plans (`intelligence/refactor_plan`), 8 built-in `tools/analyze` analyzers (`python-syntax`, `code-stats`, `ast-grep-builtin`, `security-audit`, `dead-code`, `maintainability`, `sql-check`, `sbom`), and 12 `intel.*` nodes, `intel.gate` quality gates, workflow templates and live Intelligence Dock in **Shark Automata**.
+- See [core capability status](docs/architecture/core-capability-status.md) for APIs and details.
 
 **Editor**
 - Monaco with tabs, breadcrumbs and a command palette.

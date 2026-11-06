@@ -174,6 +174,53 @@ class AutomataTests(unittest.TestCase):
         graph['nodes'][1]['params']['method'] = 'GET'
         self.assertEqual(self.run_graph(graph, 'test')['status'], 'failed')
 
+    def test_code_intelligence_nodes_gates_templates_and_codegen(self):
+        (self.root / 'src').mkdir(parents=True, exist_ok=True)
+        (self.root / 'src/calc.py').write_text('def multiply(a, b):\n    """Multiply two numbers."""\n    return a * b\n')
+        templates = self.service.execute('automata/templates', {})['templates']
+        self.assertGreaterEqual(len(templates), 4)
+        for tpl in templates:
+            self.assertTrue(self.engine.validate(tpl)['ok'], f"Template {tpl['id']} failed validation")
+
+        graph = {
+            'id': 'intel-flow',
+            'name': 'Intelligence Flow',
+            'nodes': [
+                node('t', 'trigger.manual', {'payload': '{"query": "multiply numbers"}'}),
+                node('st', 'intel.structure', {}),
+                node('sem', 'intel.semantic', {'mode': 'semantic', 'query': '{{ input.query }}', 'limit': 5}),
+                node('q', 'intel.quality', {}),
+                node('sec', 'intel.security', {}),
+                node('ag', 'intel.ast_grep', {'pattern': 'def $FN($A, $B): $$$', 'language': 'python'}),
+                node('gate', 'intel.gate', {'max_security_findings': 5, 'max_cycles': 0, 'min_maintainability': 20}),
+                node('ok', 'data.set', {'values': '{"passed": true}'}),
+                node('bad', 'data.set', {'values': '{"passed": false}'}),
+            ],
+            'edges': [
+                edge('t', 'st'),
+                edge('t', 'sem'),
+                edge('st', 'q'),
+                edge('q', 'sec'),
+                edge('sec', 'ag'),
+                edge('ag', 'gate'),
+                edge('gate', 'ok', 'pass'),
+                edge('gate', 'bad', 'fail'),
+            ],
+        }
+        run = self.run_graph(graph)
+        self.assertEqual(run['status'], 'completed')
+        self.assertGreaterEqual(run['nodes']['st']['output']['symbol_count'], 1)
+        self.assertTrue(run['nodes']['sem']['output']['search']['matches'])
+        self.assertGreaterEqual(run['nodes']['ag']['output']['match_count'], 1)
+        self.assertTrue(run['nodes']['gate']['output']['passed'])
+        self.assertEqual(run['nodes']['ok']['output']['passed'], True)
+        self.assertEqual(run['nodes']['bad']['status'], 'skipped')
+
+        self.engine.save(graph)
+        exported = self.service.execute('automata/export', {'id': 'intel-flow'})
+        self.assertIn('intel.structure', exported['code'])
+        self.assertIn('intel.gate', exported['code'])
+
 
 if __name__ == '__main__':
     unittest.main()

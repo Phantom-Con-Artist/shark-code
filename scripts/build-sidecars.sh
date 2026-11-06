@@ -18,8 +18,13 @@ uv run --project backend --locked python -m playwright install chromium
 uv run --project backend --no-sync python -m shark_runtime.selfcheck --require-browser
 
 GRAMMAR_ARGS=()
-for grammar in tree_sitter_python tree_sitter_typescript tree_sitter_javascript tree_sitter_rust tree_sitter_go tree_sitter_java tree_sitter_c tree_sitter_cpp tree_sitter_c_sharp tree_sitter_ruby; do
+for grammar in tree_sitter_python tree_sitter_typescript tree_sitter_javascript tree_sitter_rust tree_sitter_go tree_sitter_java tree_sitter_c tree_sitter_cpp tree_sitter_c_sharp tree_sitter_ruby tree_sitter_kotlin tree_sitter_php tree_sitter_scala tree_sitter_lua tree_sitter_bash tree_sitter_zig; do
   GRAMMAR_ARGS+=(--collect-all "$grammar")
+done
+
+INTEL_ARGS=()
+for pkg in ast_grep_py sqlglot radon vulture dulwich rapidfuzz docstring_parser; do
+  INTEL_ARGS+=(--collect-all "$pkg")
 done
 
 BUILD_KEY="$(python3 scripts/runtime-build-key.py)"
@@ -27,7 +32,7 @@ BUILD="$PWD/target/shark-runtime-build/$BUILD_KEY"
 mkdir -p "$BUILD"
 uv run --project backend --with pyinstaller==6.22.3 pyinstaller --noconfirm --onefile --name shark-runtime \
   --distpath "$BUILD/dist" --workpath "$BUILD/work" --specpath "$BUILD" \
-  --paths backend "${GRAMMAR_ARGS[@]}" --collect-all playwright \
+  --paths backend "${GRAMMAR_ARGS[@]}" "${INTEL_ARGS[@]}" --collect-all playwright \
   --collect-all google.adk --collect-all google.genai --collect-all litellm \
   --collect-submodules mcp.server --collect-submodules mcp.shared --collect-submodules mcp.types --collect-data mcp --exclude-module mcp.cli \
   --collect-submodules shark_runtime --collect-data graphify --copy-metadata graphifyy \

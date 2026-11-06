@@ -2,19 +2,19 @@ import { create } from 'zustand';
 import { sharkAutomata, type AutomataEdge, type AutomataNode, type ComponentSpec, type Graph, type Run, type Validation, type WorkflowSummary } from '../lib/automata';
 import { useSettings } from './useSettings';
 
-export type Dock = 'inspector' | 'run' | 'code' | 'tests';
+export type Dock = 'inspector' | 'run' | 'code' | 'intelligence' | 'tests';
 type Snapshot = Pick<Graph, 'nodes' | 'edges' | 'name'>;
 const HISTORY = 60;
 const NODE_W = 220;
 
 interface AutomataState {
-  catalog: ComponentSpec[]; problems: { file: string; error: string }[]; workflows: WorkflowSummary[];
+  catalog: ComponentSpec[]; templates: Graph[]; problems: { file: string; error: string }[]; workflows: WorkflowSummary[];
   graph: Graph | null; savedVersion: string | null; dirty: boolean; saving: boolean; external: boolean; refreshedByShark: number;
   selected: string[]; selectedEdge: string | null; validation: Validation | null;
   past: Snapshot[]; future: Snapshot[];
   run: Run | null; running: boolean; dock: Dock; dockOpen: boolean; code: { filename: string; code: string } | null;
   error: string; loaded: boolean;
-  init(): Promise<void>; refresh(): Promise<void>; newGraph(name?: string): Promise<void>; open(id: string): Promise<void>; remove(id: string): Promise<void>;
+  init(): Promise<void>; refresh(): Promise<void>; newGraph(name?: string): Promise<void>; newFromTemplate(templateId: string): Promise<void>; open(id: string): Promise<void>; remove(id: string): Promise<void>;
   save(force?: boolean): Promise<void>; reload(): Promise<void>;
   addNode(type: string, x: number, y: number): string | null; moveNodes(ids: string[], dx: number, dy: number): void; mark(): void;
   patchNode(id: string, patch: Partial<AutomataNode>): void; setParam(id: string, name: string, value: unknown): void;
@@ -50,13 +50,13 @@ export const useAutomata = create<AutomataState>((set, get) => {
   };
 
   return {
-    catalog: [], problems: [], workflows: [], graph: null, savedVersion: null, dirty: false, saving: false, external: false, refreshedByShark: 0,
+    catalog: [], templates: [], problems: [], workflows: [], graph: null, savedVersion: null, dirty: false, saving: false, external: false, refreshedByShark: 0,
     selected: [], selectedEdge: null, validation: null, past: [], future: [], run: null, running: false, dock: 'inspector', dockOpen: false, code: null, error: '', loaded: false,
 
     async init() {
       try {
         const [cat, list] = await Promise.all([sharkAutomata.catalog(), sharkAutomata.list()]);
-        set({ catalog: cat.components, problems: cat.problems, workflows: list.workflows, loaded: true, error: '' });
+        set({ catalog: cat.components, templates: cat.templates ?? [], problems: cat.problems, workflows: list.workflows, loaded: true, error: '' });
         const last = localStorage.getItem('shark.automata.last');
         const first = list.workflows.find(w => w.id === last && !w.broken) ?? list.workflows.find(w => !w.broken);
         if (first && !get().graph) { const r = await sharkAutomata.get(first.id); loadGraph(r.graph, r.version); }
@@ -67,7 +67,7 @@ export const useAutomata = create<AutomataState>((set, get) => {
       try {
         const [cat, list] = await Promise.all([sharkAutomata.catalog(), sharkAutomata.list()]);
         const same = JSON.stringify(cat.components) === JSON.stringify(get().catalog);
-        set({ workflows: list.workflows, ...(same ? {} : { catalog: cat.components }), problems: cat.problems });
+        set({ workflows: list.workflows, templates: cat.templates ?? get().templates, ...(same ? {} : { catalog: cat.components }), problems: cat.problems });
         const { graph, savedVersion, dirty } = get();
         const mine = graph && list.workflows.find(w => w.id === graph.id);
         if (graph && !mine && savedVersion) { set({ external: true }); return; }
@@ -82,6 +82,22 @@ export const useAutomata = create<AutomataState>((set, get) => {
       const taken = new Set(get().workflows.map(w => w.id)); let id = slug(name), n = 2;
       while (taken.has(id)) id = `${slug(name)}-${n++}`;
       const graph: Graph = { id, name, description: '', nodes: [], edges: [] };
+      try { const r = await sharkAutomata.save(graph); loadGraph(graph, r.version); localStorage.setItem('shark.automata.last', id); await get().refresh(); }
+      catch (e) { set({ error: message(e) }); }
+    },
+
+    async newFromTemplate(templateId) {
+      const tpl = get().templates.find(t => t.id === templateId);
+      if (!tpl) return;
+      const taken = new Set(get().workflows.map(w => w.id)); let id = slug(tpl.id), n = 2;
+      while (taken.has(id)) id = `${slug(tpl.id)}-${n++}`;
+      const graph: Graph = {
+        id,
+        name: tpl.name,
+        description: tpl.description ?? '',
+        nodes: structuredClone(tpl.nodes),
+        edges: structuredClone(tpl.edges),
+      };
       try { const r = await sharkAutomata.save(graph); loadGraph(graph, r.version); localStorage.setItem('shark.automata.last', id); await get().refresh(); }
       catch (e) { set({ error: message(e) }); }
     },

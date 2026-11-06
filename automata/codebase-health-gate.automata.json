@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "name": "Codebase Health & Security Gate",
+  "description": "Runs Quality & Maintainability (Cat 5), Security & Taint Audit (Cat 6), and routes through an Intelligence Gate.",
+  "nodes": [
+    {
+      "id": "start",
+      "label": "Start audit",
+      "params": {
+        "payload": "{}"
+      },
+      "type": "trigger.manual",
+      "x": 80,
+      "y": 180
+    },
+    {
+      "id": "quality",
+      "label": "Quality & dead code",
+      "params": {},
+      "type": "intel.quality",
+      "x": 340,
+      "y": 100
+    },
+    {
+      "id": "security",
+      "label": "Security & taint",
+      "params": {},
+      "type": "intel.security",
+      "x": 340,
+      "y": 260
+    },
+    {
+      "id": "join",
+      "label": "Combine evidence",
+      "params": {},
+      "type": "flow.merge",
+      "x": 600,
+      "y": 180
+    },
+    {
+      "id": "gate",
+      "label": "Verify thresholds",
+      "params": {
+        "forbid_cycles": false,
+        "max_cyclomatic": 30,
+        "max_security_findings": 5,
+        "min_maintainability": 15
+      },
+      "type": "intel.gate",
+      "x": 860,
+      "y": 180
+    },
+    {
+      "id": "passed",
+      "label": "Gate passed",
+      "params": {
+        "template": "Health gate passed. Maintainability: {{ nodes.gate.maintainability_index }}, Security findings: {{ nodes.gate.security_findings }}"
+      },
+      "type": "data.template",
+      "x": 1120,
+      "y": 110
+    },
+    {
+      "id": "failed",
+      "label": "Gate failed",
+      "params": {
+        "template": "Health gate failed: {{ nodes.gate.reasons }}"
+      },
+      "type": "data.template",
+      "x": 1120,
+      "y": 260
+    }
+  ],
+  "edges": [
+    {
+      "from": "start",
+      "from_port": "out",
+      "id": "e1",
+      "to": "quality"
+    },
+    {
+      "from": "start",
+      "from_port": "out",
+      "id": "e2",
+      "to": "security"
+    },
+    {
+      "from": "quality",
+      "from_port": "out",
+      "id": "e3",
+      "to": "join"
+    },
+    {
+      "from": "security",
+      "from_port": "out",
+      "id": "e4",
+      "to": "join"
+    },
+    {
+      "from": "join",
+      "from_port": "out",
+      "id": "e5",
+      "to": "gate"
+    },
+    {
+      "from": "gate",
+      "from_port": "pass",
+      "id": "e6",
+      "to": "passed"
+    },
+    {
+      "from": "gate",
+      "from_port": "fail",
+      "id": "e7",
+      "to": "failed"
+    }
+  ]
+}

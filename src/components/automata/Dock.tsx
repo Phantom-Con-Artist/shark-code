@@ -1,14 +1,28 @@
 import { useEffect, useState } from 'react';
 import Editor from '@monaco-editor/react';
-import { Check, ChevronDown, FileCode2, FlaskConical, RotateCcw, Square, X } from 'lucide-react';
+import { Check, ChevronDown, Cpu, FileCode2, FlaskConical, Plus, RotateCcw, Square, X } from 'lucide-react';
 import { useAutomata } from '../../stores/useAutomata';
 import { useProjectStore } from '../../stores/useProjectStore';
 import { useUi } from '../../stores/useUi';
-import { sharkAutomata, type AutomataNode, type ComponentSpec, type ParamSpec } from '../../lib/automata';
+import { sharkAutomata, type AutomataNode, type ComponentSpec, type IntelligenceReport, type ParamSpec } from '../../lib/automata';
+import { canvasCenter, revealOnCanvas } from './Canvas';
 import { useMonacoTheme } from '../workbench/CodeEditor';
 import '../workbench/monaco';
 
 const pretty = (v: unknown) => { const t = JSON.stringify(v, null, 2) ?? ''; return t.length > 6000 ? t.slice(0, 6000) + '\n…' : t; };
+
+const INTEL_CATEGORIES = [
+  { id: 'structure', nodeType: 'intel.structure', label: '1. Structural & Syntactic', desc: '21-language AST symbols, subsystems, entry points, contracts, SQL schema' },
+  { id: 'dependencies', nodeType: 'intel.dependencies', label: '2. Dependency & SBOM', desc: 'Manifests, lockfiles, unused packages, SemVer compatibility, licenses, CycloneDX SBOM' },
+  { id: 'semantic', nodeType: 'intel.semantic', label: '3. Semantic & Clones', desc: 'Local LSA concept embeddings, domain concepts, design patterns, Type-1/2/3 clones' },
+  { id: 'impact', nodeType: 'intel.impact', label: '4. Change Impact & Risk', desc: 'Blast radius, cross-file symbol callers, contract links, SQL migration safety, risk score' },
+  { id: 'quality', nodeType: 'intel.quality', label: '5. Quality & Dead Code', desc: 'Cyclomatic/cognitive complexity, Radon Maintainability Index, LCOM4 cohesion, Vulture dead code' },
+  { id: 'security', nodeType: 'intel.security', label: '6. Security & Taint', desc: 'Secrets, bundled ast-grep rules, taint flows, permission audit, supply-chain advisories' },
+  { id: 'runtime', nodeType: 'intel.runtime', label: '7. Runtime & Bottlenecks', desc: 'Static N+1/async bottleneck detector and bundled cProfile + tracemalloc profiler' },
+  { id: 'architecture', nodeType: 'intel.architecture', label: '8. Architecture & Drift', desc: 'Inferred layers, Robert C. Martin coupling metrics, doc consistency, Mermaid diagram' },
+  { id: 'history', nodeType: 'intel.history', label: '9. Git History & Hotspots', desc: 'Commits (Git + Dulwich), churn, symbol evolution, bug-proneness, regression correlation' },
+  { id: 'context', nodeType: 'intel.context', label: '10. Agent Context & Plan', desc: 'Hybrid retrieval, stack-trace error correlation, refactoring steps, MCP connectors' },
+] as const;
 
 function ParamField({ spec, value, onChange, theme }: { spec: ParamSpec; value: unknown; onChange(v: unknown): void; theme: string }) {
   const id = `p-${spec.name}`;
@@ -91,6 +105,87 @@ function RunPanel() {
   </div>;
 }
 
+function IntelligencePanel() {
+  const [selected, setSelected] = useState<typeof INTEL_CATEGORIES[number]['id']>('structure');
+  const [loading, setLoading] = useState(false);
+  const [queryInput, setQueryInput] = useState('architecture overview');
+  const [report, setReport] = useState<IntelligenceReport | null>(null);
+  const [err, setErr] = useState('');
+
+  const runCategory = async (catId = selected) => {
+    setLoading(true); setErr('');
+    try {
+      let params: Record<string, unknown> = {};
+      if (catId === 'context') params = { query: queryInput || 'overview' };
+      else if (catId === 'semantic' && queryInput.trim()) params = { query: queryInput.trim() };
+      else if (catId === 'impact') {
+        const st = await sharkAutomata.intelligence('structure');
+        const files = ((st.data.files as { path: string }[] | undefined) ?? []).slice(0, 3).map(f => f.path);
+        params = { paths: files };
+      }
+      const res = await sharkAutomata.intelligence(catId, params);
+      setReport(res);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void runCategory(selected); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [selected]);
+
+  const addStepToCanvas = (nodeType: string) => {
+    const st = useAutomata.getState();
+    const from = st.graph?.nodes.find(n => n.id === st.selected[0]);
+    const fromSpec = from && st.catalog.find(c => c.type === from.type);
+    const pos = from ? { x: from.x + 270, y: from.y } : canvasCenter();
+    const id = st.addNode(nodeType, pos.x, pos.y);
+    if (id && from && fromSpec?.outputs.length && st.graph) {
+      const used = new Set(st.graph.edges.filter(e => e.from === from.id).map(e => e.from_port));
+      const port = fromSpec.outputs.find(o => !used.has(o)) ?? fromSpec.outputs[0];
+      useAutomata.getState().connect(from.id, port, id);
+    }
+    if (id) revealOnCanvas(pos.x, pos.y);
+  };
+
+  const activeSpec = INTEL_CATEGORIES.find(c => c.id === selected)!;
+
+  return <div className="dock-body runp">
+    <div className="run-head">
+      <Cpu size={14} />
+      <strong>10 Codebase Intelligence Features · {activeSpec.label}</strong>
+      <span className="grow" />
+      {(selected === 'semantic' || selected === 'context') && (
+        <input value={queryInput} onChange={e => setQueryInput(e.target.value)} placeholder="Query or concept" style={{ width: 180 }} />
+      )}
+      <button className="btn" disabled={loading} onClick={() => void runCategory(selected)}><FlaskConical size={12} />{loading ? 'Running…' : 'Refresh'}</button>
+      <button className="btn primary" onClick={() => addStepToCanvas(activeSpec.nodeType)}><Plus size={12} />Add step to canvas</button>
+    </div>
+    <div className="run-cols">
+      <ol className="run-steps">
+        {INTEL_CATEGORIES.map(c => (
+          <li key={c.id}>
+            <button className={selected === c.id ? 'on' : ''} onClick={() => setSelected(c.id)} title={c.desc}>
+              <span className="ellipsis">{c.label}</span>
+              <small>{c.nodeType}</small>
+            </button>
+          </li>
+        ))}
+      </ol>
+      <div className="run-log">
+        <p className="info"><b>{activeSpec.label}:</b> {activeSpec.desc}</p>
+        {err && <p className="dock-note bad">{err}</p>}
+        {report && (
+          <div className="dock-note ok">
+            Revision {report.revision?.slice(0, 12)} · status {report.status} · artifact {report.artifact_id?.slice(0, 12)}
+            <pre>{pretty(report.data)}</pre>
+          </div>
+        )}
+      </div>
+    </div>
+  </div>;
+}
+
 function CodePanel() {
   const a = useAutomata();
   const theme = useMonacoTheme();
@@ -105,10 +200,15 @@ function CodePanel() {
 
 export function Dock() {
   const a = useAutomata();
-  const tabs: [typeof a.dock, string][] = [['inspector', a.selected[0] ? 'Step' : 'Workflow'], ['run', 'Run'], ['code', 'Code']];
+  const tabs: [typeof a.dock, string][] = [
+    ['inspector', a.selected[0] ? 'Step' : 'Workflow'],
+    ['run', 'Run'],
+    ['intelligence', 'Intelligence'],
+    ['code', 'Code'],
+  ];
   return <section className="dock" aria-label="Details">
     <div className="dock-tabs" role="tablist">{tabs.map(([id, label]) => <button key={id} role="tab" aria-selected={a.dock === id} onClick={() => a.showDock(id)}>{label}</button>)}
       <span className="grow" /><button className="icon-btn sm" aria-label="Collapse details" onClick={() => useAutomata.setState({ dockOpen: false })}><ChevronDown size={14} /></button></div>
-    {a.dock === 'inspector' ? <Inspector /> : a.dock === 'run' ? <RunPanel /> : <CodePanel />}
+    {a.dock === 'inspector' ? <Inspector /> : a.dock === 'run' ? <RunPanel /> : a.dock === 'intelligence' ? <IntelligencePanel /> : <CodePanel />}
   </section>;
 }

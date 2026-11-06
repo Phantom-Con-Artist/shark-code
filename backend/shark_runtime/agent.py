@@ -203,18 +203,20 @@ class AgentHost:
             return await invoke("tools/detect", {})
 
         async def analyze_code(tool: str, pattern: str = "", language: str = "") -> dict:
-            """Run python-syntax, code-stats, ast-grep, semgrep, scc or ctags on current source.
-            ast-grep requires pattern and language. Results never apply edits. Semgrep uses
-            Shark's offline eval rule; it is a focused check, not a comprehensive security audit.
+            """Run built-in analyzers (python-syntax, code-stats, ast-grep-builtin, security-audit,
+            dead-code, maintainability, sql-check, sbom) or installed external analyzers
+            (ast-grep, semgrep, scc, ctags) on current source. ast-grep and ast-grep-builtin
+            require pattern and language. Results never apply edits.
             """
             return await invoke("tools/analyze", {"tool": tool, "pattern": pattern, "language": language})
 
         async def project_intelligence(operation: str, parameters_json: str = "{}") -> dict:
-            """Built-in project intelligence. Read operations: status, structure, search(query),
-            explain(path), dependencies, impact(paths), quality, security, architecture,
-            history, runtime, context(query), artifact(id, section, offset). Results include
-            source revision, evidence and coverage limits. Security matches need review.
-            Retrieval is ranked lexical, not embedding search. Runtime requires observations.
+            """Built-in 10-category project intelligence. Read operations: status, structure,
+            search(query), semantic(query, path, symbol), explain(path, symbol), dependencies,
+            sbom, impact(paths, depth, symbol), quality, security, architecture(rules),
+            history(limit, symbol, path_filter), runtime, context(query, paths, error_text, symbol),
+            correlate_error(error_text), refactor_plan(paths, symbol, goal), connectors,
+            artifact(id, section, offset).
             """
             from .codebase.gateway import READ_ONLY
             method = "intelligence/" + operation
@@ -227,11 +229,12 @@ class AgentHost:
             return await invoke(method, params)
 
         async def automata(operation: str, parameters_json: str = "{}") -> dict:
-            """Shark Automata workflows. Operations: catalog (call first: components and file format), list,
-            get(id), validate(id), codegen(id), test_component(id), test_node(id, node_id, input), dry_run(id).
+            """Shark Automata workflows. Operations: catalog (call first: components, templates, and file format),
+            templates, list, get(id), validate(id), codegen(id), test_component(id),
+            test_node(id, node_id, input), dry_run(id). Includes all 10 Code Intelligence nodes (intel.*).
             Dry runs never write files, run commands or send non-GET requests.
             """
-            if operation not in {"catalog", "list", "get", "validate", "codegen", "test_component", "test_node", "dry_run", "run_node"}:
+            if operation not in {"catalog", "templates", "list", "get", "validate", "codegen", "test_component", "test_node", "dry_run", "run_node"}:
                 return {"error": {"code": "invalid_params", "message": "Choose a read-only or dry-run Automata operation"}}
             try:
                 params = json.loads(parameters_json)

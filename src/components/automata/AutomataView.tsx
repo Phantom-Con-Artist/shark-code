@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
-import { FlaskConical, Play, Plus, Trash2, Workflow } from 'lucide-react';
+import { Cpu, FlaskConical, Play, Plus, Trash2, Workflow } from 'lucide-react';
 import { useAutomata } from '../../stores/useAutomata';
 import { useAgentWorkspace } from '../../stores/useAgentWorkspace';
 import { useProjectStore } from '../../stores/useProjectStore';
@@ -28,7 +28,15 @@ export function AutomataView() {
         {picker && <div className="popover am-menu" role="listbox">
           {a.workflows.map(w => <div key={w.id} className="am-opt"><button role="option" aria-selected={w.id === a.graph?.id} onClick={() => { setPicker(false); void a.open(w.id); }}><span className="ellipsis">{w.name}</span><small>{w.nodes} steps</small></button>
             <button className="icon-btn sm" aria-label={`Delete ${w.name}`} onClick={() => { if (window.confirm(`Delete “${w.name}”? The file automata/${w.id}.automata.json will be removed.`)) void a.remove(w.id); }}><Trash2 size={12} /></button></div>)}
-          <button className="am-new" onClick={() => { setPicker(false); void a.newGraph(); }}><Plus size={13} />New workflow</button>
+          <button className="am-new" onClick={() => { setPicker(false); void a.newGraph(); }}><Plus size={13} />New empty workflow</button>
+          {a.templates.length > 0 && <>
+            <div className="search-meta" style={{ padding: '6px 10px 2px' }}>Intelligence templates</div>
+            {a.templates.map(t => (
+              <button key={t.id} className="am-new" onClick={() => { setPicker(false); void a.newFromTemplate(t.id); }} title={t.description}>
+                <Cpu size={12} />{t.name}
+              </button>
+            ))}
+          </>}
         </div>}
       </div>
       {a.graph && <span className="am-save">{a.saving ? 'Saving…' : a.dirty ? 'Unsaved' : 'Saved'}</span>}
@@ -36,6 +44,7 @@ export function AutomataView() {
       <span className="grow" />
       {running && <span className="am-chip live"><span className="dot live" />Working</span>}
       {waiting && <button className="am-chip warn" onClick={() => a.showDock('run')}>Needs your decision</button>}
+      <button className="btn" disabled={!a.graph} onClick={() => a.showDock('intelligence')} title="Inspect all 10 Codebase Intelligence categories and add steps"><Cpu size={13} />Intelligence</button>
       <button className="btn" disabled={!a.graph || running || !a.graph.nodes.length} onClick={() => void a.start('test')} title="Dry run: nothing is written, no commands run"><FlaskConical size={13} />Test</button>
       <button className="btn primary" disabled={!a.graph || running || !a.graph.nodes.length} onClick={() => void a.start('run')} title="Run for real. Steps that change things ask first"><Play size={13} />Run</button>
       <button className="btn" disabled={!a.graph} aria-pressed={a.dockOpen} onClick={() => useAutomata.setState(s => ({ dockOpen: !s.dockOpen }))}>Details</button>
@@ -43,7 +52,12 @@ export function AutomataView() {
     {a.external && <div className="am-banner"><span>This workflow changed on disk, probably from a Shark proposal.</span><span className="grow" /><button className="btn" onClick={() => void a.reload()}>Load the new version</button><button className="btn" onClick={() => void a.save(true)}>Keep mine</button></div>}
     {a.error && <div className="am-banner bad" role="alert"><span>{a.error}</span><span className="grow" /><button className="btn" onClick={() => a.setError('')}>Dismiss</button></div>}
     <div className="am-stage">
-      {a.graph ? <Canvas key={a.graph.id} /> : <div className="am-empty"><Workflow size={22} /><strong>Empty canvas</strong><p>Create a workflow, drag components in, or describe your goal to Shark on the right.</p><button className="btn primary" onClick={() => void a.newGraph()}><Plus size={13} />New workflow</button></div>}
+      {a.graph ? <Canvas key={a.graph.id} /> : <div className="am-empty"><Workflow size={22} /><strong>Empty canvas</strong><p>Create a workflow, start from a Codebase Intelligence template, drag components in, or describe your goal to Shark on the right.</p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+          <button className="btn primary" onClick={() => void a.newGraph()}><Plus size={13} />New workflow</button>
+          {a.templates.map(t => <button key={t.id} className="btn" onClick={() => void a.newFromTemplate(t.id)} title={t.description}><Cpu size={13} />{t.name}</button>)}
+        </div>
+      </div>}
     </div>
     {a.graph && a.dockOpen && <Dock />}
   </div>;

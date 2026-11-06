@@ -26,8 +26,18 @@ export interface Validation { ok: boolean; errors: string[]; warnings: string[] 
 export interface EngineRun { provider: string; model: string; effort?: string }
 export interface ComponentTest { component: string; passed: boolean; cases: { name: string; passed: boolean; ok: boolean; error?: string; output?: unknown; expected?: unknown }[] }
 
+export interface IntelligenceReport {
+  artifact_id: string;
+  revision: string;
+  status: string;
+  kind: string;
+  data: Record<string, unknown>;
+}
+
 export const sharkAutomata = {
-  catalog: () => request<{ components: ComponentSpec[]; problems: { file: string; error: string }[]; categories: string[] }>('automata/catalog'),
+  catalog: () => request<{ components: ComponentSpec[]; problems: { file: string; error: string }[]; categories: string[]; templates?: Graph[] }>('automata/catalog'),
+  templates: () => request<{ templates: Graph[] }>('automata/templates'),
+  intelligence: (operation: string, params: Record<string, unknown> = {}) => request<IntelligenceReport>(`intelligence/${operation}`, params),
   list: () => request<{ workflows: WorkflowSummary[]; component_count: number; component_problems: { file: string; error: string }[] }>('automata/list'),
   get: (id: string) => request<{ graph: Graph; version: string }>('automata/get', { id }),
   save: (graph: Graph, expected_version?: string) => request<{ id: string; version: string }>('automata/save', { graph, ...(expected_version ? { expected_version } : {}) }),

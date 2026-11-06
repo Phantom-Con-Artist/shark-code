@@ -12,6 +12,11 @@ dependencies = [
     "litellm>=1.70,<2",
     "mcp>=2",
     "playwright>=1.64.1",
+    "ast-grep-py>=0.51.1",
+    "dulwich>=1.2.21",
+    "radon>=6.0.1",
+    "sqlglot>=30.29.0",
+    "vulture>=2.16",
 ]
 
 [project.scripts]
