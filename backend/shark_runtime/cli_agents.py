@@ -104,7 +104,7 @@ def _run_dir() -> Path:
 AGY_PLUGIN = ".agents/plugins/shark"
 SHARK_TOOLS_NOTE = ("\n\nSHARK TOOLS (MCP server 'shark'): shark_graph (find symbols and how they connect), shark_impact "
                     "(blast radius before changing shared code), shark_search, shark_outline, shark_git, shark_project (built-in project intelligence), shark_check_page "
-                    "(load a local page in headless Chromium and report console errors). Prefer them over broad file scans.")
+                    "(load a local page in headless Chromium and report console errors), shark_automata (visual workflow catalog, validation, component tests and dry runs; call its catalog first when asked to build or edit an automation). Prefer them over broad file scans.")
 LINK_DIRS = {"node_modules", ".venv", "venv"}
 
 

@@ -43,9 +43,11 @@ async function runDefaultTask(group: 'build' | 'test') {
 
 /* Goal encoding: follow-up context and attachments travel inside the task goal. */
 const CONTEXT = /^\[context\]\n([\s\S]*?)\n\[\/context\]\n\n/;
+const AUTOMATA = /^\[automata\]\n[\s\S]*?\n\[\/automata\]\n\n/;
 const ATTACHED = /\n\n(?:Open file|Attached files): (.+)$/;
 export function parseGoal(goal: string) {
   let text = goal, continues = '', files: string[] = [];
+  const am = AUTOMATA.exec(text); if (am) text = text.slice(am[0].length);
   const c = CONTEXT.exec(text); if (c) { continues = /Previous request: (.*)/.exec(c[1])?.[1] ?? ''; text = text.slice(c[0].length); }
   const a = ATTACHED.exec(text); if (a) { files = a[1].split(', '); text = text.slice(0, a.index); }
   return { text, continues, files };
@@ -374,6 +376,7 @@ export function AgentPanel() {
         goalText = `[context]\nPrevious request: ${parseGoal(task.goal).text.split('\n')[0].slice(0, 300)}\nPrevious result: ${String(previous).slice(0, 1500)}\n[/context]\n\n${goalText}`;
       }
     }
+    if (!passThrough && s.view === 'automata') goalText = `[automata]\n${(await import('../automata/brief')).automataBrief()}\n[/automata]\n\n${goalText}`;
     const start = () => flushSync(() => { setPending(goalText); setInput(''); setAttachments([]); });
     const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
     if (empty && doc.startViewTransition && !s.reduceMotion) doc.startViewTransition(start); else start();

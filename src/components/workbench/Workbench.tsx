@@ -8,6 +8,7 @@ import { useProfiles } from '../../stores/useProfiles';
 import { useUi } from '../../stores/useUi';
 import { useGit } from '../../stores/useGit';
 import { AgentPanel } from './AgentPanel';
+import { AutomataView } from '../automata/AutomataView';
 import { BottomPanel } from './BottomPanel';
 import { CommandPalette, type Command } from './CommandPalette';
 import { closeTab, EditorArea } from './EditorArea';
@@ -57,6 +58,11 @@ export function Workbench() {
   }, [native, agent.connected]);
   useEffect(() => { const r = () => setViewport({ w: window.innerWidth, h: window.innerHeight }); window.addEventListener('resize', r); return () => window.removeEventListener('resize', r); }, []);
 
+  useEffect(() => {
+    const st = useSettings.getState();
+    if (s.view === 'automata') st.set({ sidebarOpen: true, sidebarView: 'components' });
+    else if (st.sidebarView === 'components') st.set({ sidebarView: 'files' });
+  }, [s.view]);
   // Opening a file or a review brings the editor pane in beside the conversation.
   useEffect(() => { if (project.activePath) useSettings.getState().set({ editorOpen: true }); }, [project.activePath]);
   useEffect(() => { if (ui.editorView === 'review' && agent.proposal) useSettings.getState().set({ editorOpen: true }); }, [ui.editorView, agent.proposal]);
@@ -150,6 +156,7 @@ export function Workbench() {
       { label: 'Go to Line…', keys: `${mod} G`, run: () => void editorAction('editor.action.gotoLine') }, 'separator',
       { label: 'Toggle Light / Dark', run: toggleTheme },
       { label: 'Reset Layout', run: () => s.set({ ...LAYOUT_DEFAULTS, sidebarOpen: true }) },
+      { label: 'Automata View (visual workflows)', run: () => s.set({ view: 'automata', editorOpen: true }) },
       { label: s.view === 'shark' ? 'Code View (editor first)' : 'Shark View (agent first)', keys: `${mod} ⇧ M`, run: () => s.set({ view: s.view === 'shark' ? 'code' : 'shark', editorOpen: true }) },
     ] },
     { label: 'Terminal', items: [
@@ -255,7 +262,18 @@ export function Workbench() {
         <Splitter axis="x" label="Resize sidebar" value={s.sidebarWidth} min={200} max={Math.min(560, sideMax)} onChange={v => s.set({ sidebarWidth: v })} onReset={() => s.set({ sidebarWidth: LAYOUT_DEFAULTS.sidebarWidth })} />
       </>}
       <div className="wb-main">
-        {s.view === 'code'
+        {s.view === 'automata'
+          ? <div className="wb-row view-code">
+              <div className="code-col">
+                <div className="pane pane-editor grow-pane"><AutomataView /></div>
+                {bottomPanel}
+              </div>
+              {s.editorOpen && <>
+                <Splitter axis="x" invert label="Resize Shark panel" value={s.agentWidth} min={340} max={Math.max(340, viewport.w - rail - 420 - (s.sidebarOpen ? s.sidebarWidth : 0))} onChange={v => s.set({ agentWidth: v })} onReset={() => s.set({ agentWidth: 420 })} />
+                <div className="pane pane-shark"><AgentPanel /></div>
+              </>}
+            </div>
+        : s.view === 'code'
           ? <div className="wb-row view-code">
               <div className="code-col">
                 {!panelMax && <div className="pane pane-editor grow-pane"><EditorArea /></div>}

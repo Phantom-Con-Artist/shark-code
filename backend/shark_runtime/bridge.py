@@ -21,6 +21,8 @@ ALLOWED = {"tools/detect", "tools/analyze", "graph/query", "graph/impact", "work
            "git/status", "git/log", "git/diff", "deps/list", "browser/check", "browser/locate"}
 
 ALLOWED |= READ_ONLY | {"file/read", "workspace/list", "workflow/ask"}
+# Engines may inspect, validate, test and dry-run Automata graphs in their private copy. Real runs stay with the person.
+ALLOWED |= {"automata/" + op for op in ("catalog", "list", "get", "validate", "codegen", "dry_run", "run_node", "test_node", "test_component")}
 
 
 class _Server(socketserver.ThreadingMixIn, http.server.HTTPServer):

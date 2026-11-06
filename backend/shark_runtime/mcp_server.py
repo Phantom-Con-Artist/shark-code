@@ -60,6 +60,22 @@ def shark_project(operation: str, parameters_json: str = "{}") -> str:
 
 
 @server.tool()
+def shark_automata(operation: str, parameters_json: str = "{}") -> str:
+    """Shark Automata (visual workflows). Operations: catalog (components plus the file format; call this first),
+    list, get(id), validate(id), codegen(id), test_component(id), test_node(id, node_id, input), dry_run(id).
+    Write workflow and component files with your normal file tools in this private copy, then validate,
+    test_component and dry_run them and fix what fails. Dry runs never write files, run commands or send
+    non-GET requests. Real runs are the person's decision and are not available here.
+    """
+    if operation not in {"catalog", "list", "get", "validate", "codegen", "test_component", "test_node", "dry_run", "run_node"}:
+        raise ValueError("Choose catalog, list, get, validate, codegen, test_component, test_node or dry_run")
+    params = json.loads(parameters_json)
+    if not isinstance(params, dict):
+        raise ValueError("parameters_json must be a JSON object")
+    return compact(call("automata/" + operation, params), limit=24000)
+
+
+@server.tool()
 def shark_static_tools() -> str:
     """List built-in and installed static analysis tools, availability and setup instructions."""
     return compact(call("tools/detect", {}))

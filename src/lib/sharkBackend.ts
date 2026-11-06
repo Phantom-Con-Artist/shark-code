@@ -29,7 +29,7 @@ export interface SyntaxOutline {
   imports: { source: string; line: number; resolution: 'unresolved_syntax' }[];
 }
 type Response<T> = { id: string; result: T; error?: never } | { id: string; result?: never; error: { code: string; message: string } };
-async function request<T>(method: string, params: object = {}): Promise<T> {
+export async function request<T>(method: string, params: object = {}): Promise<T> {
   if (!isTauri()) throw new BackendError('native_required', 'Open Shark Code in the desktop app to use native agent tools.');
   const id = crypto.randomUUID();
   const response = await invoke<Response<T>>('backend_request', { workspaceRoot: useProjectStore.getState().root, request: { id, method, params } });
@@ -37,7 +37,7 @@ async function request<T>(method: string, params: object = {}): Promise<T> {
   if (response.error) throw new BackendError(response.error.code, response.error.message);
   return response.result as T;
 }
-export const EXPECTED_RUNTIME = 6;
+export const EXPECTED_RUNTIME = 7;
 export const restartBackend = () => invoke('backend_restart');
 export const sharkBackend = {
   capabilities: () => request<Record<string, unknown>>('capabilities'),

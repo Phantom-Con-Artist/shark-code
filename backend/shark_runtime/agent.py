@@ -226,13 +226,26 @@ class AgentHost:
                 return {"error": {"code": "invalid_json", "message": "Expected a JSON object"}}
             return await invoke(method, params)
 
+        async def automata(operation: str, parameters_json: str = "{}") -> dict:
+            """Shark Automata workflows. Operations: catalog (call first: components and file format), list,
+            get(id), validate(id), codegen(id), test_component(id), test_node(id, node_id, input), dry_run(id).
+            Dry runs never write files, run commands or send non-GET requests.
+            """
+            if operation not in {"catalog", "list", "get", "validate", "codegen", "test_component", "test_node", "dry_run", "run_node"}:
+                return {"error": {"code": "invalid_params", "message": "Choose a read-only or dry-run Automata operation"}}
+            try:
+                params = json.loads(parameters_json)
+            except ValueError:
+                return {"error": {"code": "invalid_json", "message": "Expected a JSON object"}}
+            return await invoke("automata/" + operation, params)
+
         async def request_human_input(question: str) -> dict:
             """Park this workflow for a missing human decision. Stop after requesting input;
             the host resumes from a checkpoint with the person's answer. Do not invent approval.
             """
             return await invoke("workflow/ask", {"question": question})
 
-        tools = [project_intelligence, static_tools, analyze_code, explore, read_file, search_code, assess_impact, outline, check_page]
+        tools = [project_intelligence, automata, static_tools, analyze_code, explore, read_file, search_code, assess_impact, outline, check_page]
         if getattr(service, "human_request", None) is not None:
             tools.append(request_human_input)
         return tools if read_only else tools + [propose_changes]

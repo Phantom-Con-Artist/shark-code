@@ -13,19 +13,24 @@ import { useUi } from '../../stores/useUi';
 import { FileIcon, relativeTime } from './primitives';
 import { detectTasks, type TaskGroup, type WorkspaceTask } from './tasks';
 import { askAgent } from './BottomPanel';
+import { ComponentList } from '../automata/ComponentList';
 
-const TITLES: Record<string, string> = { sessions: 'Shark sessions', files: 'Explorer', search: 'Search', scm: 'Source control', run: 'Run & Build', browser: 'Browser', plugins: 'Plugins' };
+const TITLES: Record<string, string> = { components: 'Components', sessions: 'Shark sessions', files: 'Explorer', search: 'Search', scm: 'Source control', run: 'Run & Build', browser: 'Browser', plugins: 'Plugins' };
 
 export function Sidebar() {
   const view = useSettings(s => s.sidebarView);
+  const automata = useSettings(s => s.view) === 'automata';
   const { all } = usePlugins();
   const plugin = view.startsWith('plugin:') ? all.find(p => `plugin:${p.id}` === view) : undefined;
   const title = plugin?.name ?? TITLES[view] ?? 'Plugin';
   return <aside className="pane pane-side" aria-label={title}>
     <div className="pane-head"><h2 className="label">{title}</h2>
+      {automata && (view === 'files' || view === 'components') && <div className="seg" role="group" aria-label="Sidebar content">
+        <button aria-pressed={view === 'components'} onClick={() => useSettings.getState().set({ sidebarView: 'components' })}>Components</button>
+        <button aria-pressed={view === 'files'} onClick={() => useSettings.getState().set({ sidebarView: 'files' })}>Files</button></div>}
       {view === 'sessions' && <><span className="grow" /><button className="icon-btn sm" aria-label="New chat" title="New chat · Ctrl N" onClick={() => { useAgentWorkspace.getState().fresh(); useUi.getState().set({ composerFocus: Date.now() }); }}><Plus size={14} /></button></>}
     </div>
-    {view === 'sessions' ? <Sessions /> : view === 'files' ? <Explorer /> : view === 'search' ? <SearchPane /> : view === 'scm' ? <SourceControl /> : view === 'run' ? <RunView />
+    {view === 'components' ? <ComponentList /> : view === 'sessions' ? <Sessions /> : view === 'files' ? <Explorer /> : view === 'search' ? <SearchPane /> : view === 'scm' ? <SourceControl /> : view === 'run' ? <RunView />
       : view === 'browser' ? <BrowserView /> : view === 'plugins' ? <PluginManager /> : plugin ? <PluginView plugin={plugin} /> : <p className="search-meta">This plugin is no longer installed.</p>}
   </aside>;
 }
@@ -36,7 +41,7 @@ function Sessions() {
   const native = useProjectStore(s => s.kind) === 'native';
   if (!agent.tasks.length) return <p className="search-meta">{native ? 'Your conversations appear here. Each keeps its activity and review.' : 'Sessions are stored by the desktop app.'}</p>;
   return <div className="results">
-    {agent.tasks.map(t => { const title = t.goal.replace(/^\[context\][\s\S]*?\[\/context\]\n\n/, '').replace(/\n\nOpen file: .+$/, '').split('\n')[0];
+    {agent.tasks.map(t => { const title = t.goal.replace(/^\[automata\][\s\S]*?\[\/automata\]\n\n/, '').replace(/^\[context\][\s\S]*?\[\/context\]\n\n/, '').replace(/\n\nOpen file: .+$/, '').split('\n')[0];
       return <button key={t.id} className={`session-row ${t.id === agent.activeId ? 'active' : ''}`} onClick={() => void agent.select(t.id)}>
         <span className={`dot ${t.status === 'running' ? 'live' : t.status === 'review' ? 'warn' : t.status === 'failed' ? 'err' : t.status === 'applied' || t.status === 'completed' ? 'ok' : ''}`} />
         <span className="text"><span className="ellipsis">{title}</span><small>{STATUS[t.status]}{t.engine ? ` · ${PROVIDERS[t.engine as ProviderId]?.label ?? t.engine}` : ''}{t.mode && t.mode !== 'builder' ? ` · ${MODES.find(m => m.id === t.mode)?.label ?? t.mode}` : ''}{t.group ? ' · parallel' : ''} · {relativeTime(t.created_at)}</small></span>

@@ -11,7 +11,7 @@ from .codebase import Codebase
 from .codebase.gateway import OPERATIONS, dispatch as intelligence_dispatch
 
 # Bump when the app depends on new runtime methods or parameters; the UI offers a restart if older.
-RUNTIME_VERSION = 6
+RUNTIME_VERSION = 7
 CORE_TOOLS = {"workspace/list", "workspace/snapshot", "file/read", "code/search", "code/outline",
     "artifact/read", "cache/stats", "changes/preview", "changes/apply", "changes/revert",
     "changes/pending", "changes/recover", "changes/inspect"}
@@ -24,6 +24,11 @@ APP_TOOLS = {"workspace/context", "graph/index", "graph/query", "graph/impact", 
 
 APP_TOOLS |= {"intelligence/" + operation for operation in OPERATIONS}
 APP_TOOLS |= {"workflow/" + operation for operation in ("create", "get", "step", "start", "resume", "pause", "cancel", "respond", "replan", "ask")}
+
+
+AUTOMATA_METHODS = {"catalog", "list", "get", "save", "delete", "validate", "codegen", "export", "run", "dry_run", "run_get", "run_node", "runs",
+                    "respond", "resume", "cancel", "test_node", "test_component"}
+APP_TOOLS |= {"automata/" + operation for operation in AUTOMATA_METHODS}
 
 
 class Service:
@@ -43,6 +48,7 @@ class Service:
             self.core.close()
             raise
         self.workflow_lock = threading.RLock()
+        self._automata = None
         self.agent = None
         self.bridge = None
         self.orchestrator = None
@@ -62,6 +68,8 @@ class Service:
             return result
         if method.startswith("workflow/"):
             return self.workflow_method(method, p)
+        if method.startswith("automata/"):
+            return self.automata_method(method.split("/", 1)[1], p)
         if method.startswith("intelligence/"):
             return intelligence_dispatch(self.intelligence, method, p)
         if method in CORE_TOOLS:
@@ -256,6 +264,79 @@ class Service:
                 return {"task": task, "proposal": preview, "graph_refresh": "on_next_query"}
         raise Fault("unknown_method", method)
 
+    @property
+    def automata(self):
+        with self.workflow_lock:
+            if self._automata is None:
+                from .automata import Automata
+                self._automata = Automata(self)
+            return self._automata
+
+    def automata_method(self, op, p):
+        if op not in AUTOMATA_METHODS:
+            raise Fault("unknown_method", "automata/" + op)
+        engine = self.automata
+        def graph_of():
+            if "graph" in p:
+                if not isinstance(p["graph"], dict):
+                    raise Fault("invalid_params", "graph must be an object")
+                return p["graph"]
+            return engine.get(p.get("id"))["graph"]
+        if op == "catalog":
+            self.fields(p)
+            return engine.catalog()
+        if op == "list":
+            self.fields(p)
+            return engine.list()
+        if op == "get":
+            self.fields(p, {"id"})
+            return engine.get(p["id"])
+        if op == "save":
+            self.fields(p, {"graph"}, {"expected_version"})
+            return engine.save(p["graph"], p.get("expected_version"))
+        if op == "delete":
+            self.fields(p, {"id"})
+            return engine.delete(p["id"])
+        if op == "validate":
+            self.fields(p, optional={"id", "graph"})
+            return engine.validate(graph_of())
+        if op in {"codegen", "export"}:
+            self.fields(p, optional={"id", "graph"})
+            result = engine.codegen(graph_of())
+            if op == "export":
+                target = engine._inside(result["filename"])
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(result["code"], encoding="utf-8")
+            return result
+        if op in {"run", "dry_run"}:
+            self.fields(p, optional={"id", "graph", "mode", "trigger", "run", "api_key", "wait_seconds"})
+            started = engine.start(graph=p.get("graph"), graph_id=p.get("id"), mode="test" if op == "dry_run" else p.get("mode", "run"),
+                                   trigger=p.get("trigger"), engine=p.get("run"), api_key=p.get("api_key"))
+            return engine.wait(started["id"], p.get("wait_seconds", 60)) if op == "dry_run" else started
+        if op == "run_get":
+            self.fields(p, {"run_id"}, {"wait_seconds"})
+            return engine.wait(p["run_id"], p["wait_seconds"]) if p.get("wait_seconds") else engine.get_run(p["run_id"])
+        if op == "run_node":
+            self.fields(p, {"run_id", "node_id"})
+            return engine.run_node(p["run_id"], p["node_id"])
+        if op == "runs":
+            self.fields(p, optional={"id", "limit"})
+            return engine.list_runs(p.get("id"), min(100, int(p.get("limit", 20))))
+        if op == "respond":
+            self.fields(p, {"run_id", "gate_id", "decision"}, {"answer"})
+            return engine.respond(p["run_id"], p["gate_id"], p["decision"], p.get("answer", ""))
+        if op == "resume":
+            self.fields(p, {"run_id"}, {"retry_failed"})
+            return engine.resume(p["run_id"], bool(p.get("retry_failed")))
+        if op == "cancel":
+            self.fields(p, {"run_id"})
+            return engine.cancel(p["run_id"])
+        if op == "test_node":
+            self.fields(p, {"node_id"}, {"id", "graph", "input", "nodes"})
+            return engine.test_node(graph_of(), p["node_id"], p.get("input"), p.get("nodes"))
+        self.fields(p, {"id"})
+        return engine.test_component(p["id"])
+
     def workflow_method(self, method, p):
         if method == "workflow/ask":
             self.fields(p, {"question"})
@@ -291,6 +372,8 @@ class Service:
         raise Fault("unknown_method", method)
 
     def close(self):
+        if self._automata is not None:
+            self._automata.close()
         if self.orchestrator is not None:
             self.orchestrator.close()
         if self.agent is not None:

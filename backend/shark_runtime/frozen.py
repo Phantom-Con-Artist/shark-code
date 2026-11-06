@@ -19,6 +19,11 @@ def run():
         from shark_runtime.mcp_server import server
         server.run("stdio")
         return
+    if len(sys.argv) > 1 and sys.argv[1] == "--automata-worker":
+        from shark_runtime.automata_worker import main as automata_worker
+        sys.argv = sys.argv[:1]
+        automata_worker()
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "--graph-worker":
         from shark_runtime.graph_worker import main as worker
         sys.argv = sys.argv[:1]

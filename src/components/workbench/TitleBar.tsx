@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
-import { ArrowLeft, ArrowRight, Code2, Copy, Minus, PanelBottom, PanelLeft, PanelRight, Search, Square, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Code2, Workflow, Copy, Minus, PanelBottom, PanelLeft, PanelRight, Search, Square, X } from 'lucide-react';
 import { useProjectStore } from '../../stores/useProjectStore';
 import { useSettings } from '../../stores/useSettings';
 import { useUi } from '../../stores/useUi';
@@ -74,10 +74,11 @@ export function TitleBar({ menus }: { menus: Menu[] }) {
       <div className="view-switch" role="group" aria-label="View">
         <button aria-pressed={s.view === 'shark'} title={`Shark view: conversation first · ${mod} ⇧ M`} onClick={() => s.set({ view: 'shark' })}><SharkMark className="view-mark" />Shark</button>
         <button aria-pressed={s.view === 'code'} title={`Code view: editor first, Shark docked · ${mod} ⇧ M`} onClick={() => s.set({ view: 'code', editorOpen: true })}><Code2 size={13} />Code</button>
+        <button aria-pressed={s.view === 'automata'} title="Automata: visual workflows built with Shark" onClick={() => s.set({ view: 'automata', editorOpen: true })}><Workflow size={13} />Automata</button>
       </div>
       <button className="icon-btn" aria-pressed={s.sidebarOpen} aria-label="Toggle sidebar" title={`Sidebar · ${mod} B`} onClick={() => s.toggle('sidebarOpen')}><PanelLeft size={15} /></button>
       <button className="icon-btn" aria-pressed={s.terminalOpen} aria-label="Toggle panel" title={`Panel · ${mod} J`} onClick={() => s.toggle('terminalOpen')}><PanelBottom size={15} /></button>
-      <button className="icon-btn" aria-pressed={s.editorOpen} aria-label={s.view === 'code' ? 'Toggle Shark panel' : 'Toggle editor pane'} title={`${s.view === 'code' ? 'Shark panel' : 'Editor'} · ${mod} \\`} onClick={() => s.toggle('editorOpen')}><PanelRight size={15} /></button>
+      <button className="icon-btn" aria-pressed={s.editorOpen} aria-label={s.view !== 'shark' ? 'Toggle Shark panel' : 'Toggle editor pane'} title={`${s.view !== 'shark' ? 'Shark panel' : 'Editor'} · ${mod} \\`} onClick={() => s.toggle('editorOpen')}><PanelRight size={15} /></button>
       {native && <div className="window-controls">
         <button aria-label="Minimize" title="Minimize" onClick={() => void win().then(w => w.minimize())}><Minus size={15} /></button>
         <button aria-label={maximized ? 'Restore' : 'Maximize'} title={maximized ? 'Restore' : 'Maximize'} onClick={() => void win().then(w => w.toggleMaximize())}>{maximized ? <Copy size={12} style={{ transform: 'scaleX(-1)' }} /> : <Square size={12} />}</button>

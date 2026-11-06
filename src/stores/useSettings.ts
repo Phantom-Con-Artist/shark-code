@@ -41,10 +41,10 @@ export interface Settings {
   readingFont: 'default' | 'readable'; highContrast: boolean; reduceMotion: boolean;
   wordWrap: boolean; minimap: boolean;
   sidebarOpen: boolean; editorOpen: boolean; terminalOpen: boolean;
-  sidebarWidth: number; editorWidth: number; terminalHeight: number; sidebarView: 'sessions' | 'files' | 'search' | 'scm' | 'run' | 'browser' | 'plugins' | `plugin:${string}`;
+  sidebarWidth: number; editorWidth: number; terminalHeight: number; sidebarView: 'sessions' | 'components' | 'files' | 'search' | 'scm' | 'run' | 'browser' | 'plugins' | `plugin:${string}`;
   provider: ProviderId; models: Record<ProviderId, string>; efforts: Partial<Record<ProviderId, Effort>>; keys: Partial<Record<ProviderId, string>>;
   attachActiveFile: boolean; browserUrl: string; disabledPlugins: string[];
-  view: 'shark' | 'code'; agentWidth: number; mode: ModeId; skills: string[]; customSkills: CustomSkill[]; activeCustomSkills: string[];
+  view: 'shark' | 'code' | 'automata'; agentWidth: number; mode: ModeId; skills: string[]; customSkills: CustomSkill[]; activeCustomSkills: string[];
   set(patch: Partial<Omit<Settings, 'set' | 'toggle'>>): void;
   toggle(key: 'sidebarOpen' | 'editorOpen' | 'terminalOpen'): void;
 }
