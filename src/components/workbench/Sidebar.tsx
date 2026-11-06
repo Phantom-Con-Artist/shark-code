@@ -12,6 +12,7 @@ import { useUi } from '../../stores/useUi';
 import { FileIcon, relativeTime } from './primitives';
 import { detectTasks, type TaskGroup, type WorkspaceTask } from './tasks';
 import { askAgent } from './BottomPanel';
+import { parseGoal } from './AgentPanel';
 import { ComponentList } from '../automata/ComponentList';
 
 const TITLES: Record<string, string> = { components: 'Components', sessions: 'Shark sessions', files: 'Explorer', search: 'Search', scm: 'Source control', run: 'Run & Build', browser: 'Browser', plugins: 'Plugins' };
@@ -43,8 +44,11 @@ function Sessions() {
   const native = useProjectStore(s => s.kind) === 'native';
   const [query, setQuery] = useState('');
   if (!agent.tasks.length) return <p className="search-meta">{native ? 'Your conversations appear here. Each keeps its activity and review.' : 'Sessions are stored by the desktop app.'}</p>;
+  // A follow-up continues an earlier task (see conversationChain); only show the latest turn of each conversation.
+  const continued = new Set(agent.tasks.map(t => parseGoal(t.goal).previousId).filter(Boolean));
+  const heads = agent.tasks.filter(t => !continued.has(t.id));
   const q = query.trim().toLowerCase();
-  const matches = agent.tasks.filter(t => !q || sessionTitle(t.goal).toLowerCase().includes(q));
+  const matches = heads.filter(t => !q || sessionTitle(t.goal).toLowerCase().includes(q));
   return <div className="explorer">
     <div className="filter"><Search size={13} /><input className="field" placeholder="Search sessions…" value={query} onChange={e => setQuery(e.target.value)} aria-label="Search sessions" /></div>
     {matches.length === 0 ? <p className="search-meta">No sessions match “{query}”.</p> : <div className="results">

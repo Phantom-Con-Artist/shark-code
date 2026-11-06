@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import {
-  AlertCircle, ArrowRight, ArrowUp, AtSign, BookOpen, Bot, Bug, Check, ChevronDown, ChevronRight, CircleAlert, CornerDownRight, FileCode2, FilePen, FilePlus2,
+  AlertCircle, ArrowRight, ArrowUp, AtSign, BookOpen, Bot, Bug, Check, ChevronDown, ChevronRight, CircleAlert, FileCode2, FilePen, FilePlus2,
   FileSearch, FlaskConical, Folder, FolderTree, GitCompareArrows, Globe, Hammer, History, Info, ListChecks, Map as MapIcon, MessagesSquare, Network, Plus, RefreshCw, Search,
   Layers, RotateCw, Settings2, ShieldAlert, Sparkles, Square, SquareTerminal, Wand2, Wrench, X, Zap,
 } from 'lucide-react';
@@ -46,11 +46,23 @@ const CONTEXT = /^\[context\]\n([\s\S]*?)\n\[\/context\]\n\n/;
 const AUTOMATA = /^\[automata\]\n[\s\S]*?\n\[\/automata\]\n\n/;
 const ATTACHED = /\n\n(?:Open file|Attached files): (.+)$/;
 export function parseGoal(goal: string) {
-  let text = goal, continues = '', files: string[] = [];
+  let text = goal, continues = '', previousId = '', files: string[] = [];
   const am = AUTOMATA.exec(text); if (am) text = text.slice(am[0].length);
-  const c = CONTEXT.exec(text); if (c) { continues = /Previous request: (.*)/.exec(c[1])?.[1] ?? ''; text = text.slice(c[0].length); }
+  const c = CONTEXT.exec(text); if (c) { continues = /Previous request: (.*)/.exec(c[1])?.[1] ?? ''; previousId = /PreviousId: (\S+)/.exec(c[1])?.[1] ?? ''; text = text.slice(c[0].length); }
   const a = ATTACHED.exec(text); if (a) { files = a[1].split(', '); text = text.slice(0, a.index); }
-  return { text, continues, files };
+  return { text, continues, previousId, files };
+}
+/** Earlier turns a task continues from, oldest first, so a follow-up renders as one conversation. */
+export function conversationChain(tasks: { id: string; goal: string; summary?: string | null; status: string }[], taskId: string) {
+  const byId = new Map(tasks.map(t => [t.id, t]));
+  const chain: typeof tasks = [];
+  let id = byId.get(taskId) ? parseGoal(byId.get(taskId)!.goal).previousId : '';
+  const seen = new Set<string>([taskId]);
+  while (id && byId.has(id) && !seen.has(id) && chain.length < 50) {
+    const t = byId.get(id)!; chain.unshift(t); seen.add(id);
+    id = parseGoal(t.goal).previousId;
+  }
+  return chain;
 }
 
 type Step = { id: string; name: string; target: string; done: boolean; error: boolean; children?: Step[] };
@@ -289,6 +301,7 @@ export function AgentPanel() {
   const siblings = task?.group ? agent.tasks.filter(t => t.group === task.group).sort((a, b) => a.created_at - b.created_at) : [];
   const anyRunning = agent.tasks.some(t => t.status === 'running');
   const goal = task ? parseGoal(task.goal) : null;
+  const chain = useMemo(() => task ? conversationChain(agent.tasks, task.id) : [], [agent.tasks, task?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const startedAt = agent.events.find(e => e.kind === 'started')?.timestamp;
   const finishedAt = [...agent.events].reverse().find(e => ['completed', 'failed', 'cancelled', 'review', 'proposal'].includes(e.kind))?.timestamp;
   const empty = !task && pending === null;
@@ -373,7 +386,7 @@ export function AgentPanel() {
       if (files.length) goalText += `\n\nAttached files: ${files.join(', ')}`;
       if (task && task.status !== 'created') {
         const previous = task.summary || [...blocks].reverse().find(b => b.type === 'text')?.text || STATUS[task.status];
-        goalText = `[context]\nPrevious request: ${parseGoal(task.goal).text.split('\n')[0].slice(0, 300)}\nPrevious result: ${String(previous).slice(0, 1500)}\n[/context]\n\n${goalText}`;
+        goalText = `[context]\nPreviousId: ${task.id}\nPrevious request: ${parseGoal(task.goal).text.split('\n')[0].slice(0, 300)}\nPrevious result: ${String(previous).slice(0, 1500)}\n[/context]\n\n${goalText}`;
       }
     }
     if (!passThrough && s.view === 'automata') goalText = `[automata]\n${(await import('../automata/brief')).automataBrief()}\n[/automata]\n\n${goalText}`;
@@ -541,8 +554,11 @@ export function AgentPanel() {
               {PROVIDERS[t.engine as ProviderId]?.label ?? t.engine}<small>{STATUS[t.status]}</small>
             </button>)}
           </div>}
+          {chain.map(t => { const cg = parseGoal(t.goal); const answer = t.summary || STATUS[t.status]; return <div key={t.id} className="turn-history">
+            <div className="msg-user"><div className="msg-text">{cg.text}</div></div>
+            <div className="msg-shark"><SharkMark className="msg-avatar" /><div className="msg-body"><p className="prose">{answer}</p></div></div>
+          </div>; })}
           {(() => { const g = goal ?? parseGoal(pending ?? ''); return <div className="msg-user">
-            {g.continues && <div className="attached top"><CornerDownRight size={12} />Continues “{g.continues.slice(0, 60)}”</div>}
             <div className="msg-text">{g.text}</div>
             {g.files.length > 0 && <div className="attached">{g.files.map(f => <span key={f} className="ctx-chip"><FileIcon path={f} size={11} />{f.split('/').pop()}</span>)}</div>}
           </div>; })()}
