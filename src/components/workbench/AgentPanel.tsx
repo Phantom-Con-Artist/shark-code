@@ -464,9 +464,7 @@ export function AgentPanel() {
       }
     }
     if (!passThrough && s.view === 'automata') goalText = `[automata]\n${(await import('../automata/brief')).automataBrief()}\n[/automata]\n\n${goalText}`;
-    const start = () => flushSync(() => { setPending(goalText); setInput(''); setAttachments([]); });
-    const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
-    if (empty && doc.startViewTransition && !s.reduceMotion) doc.startViewTransition(start); else start();
+    flushSync(() => { setPending(goalText); setInput(''); setAttachments([]); });
     pinned.current = true;
     const shared = { workflow: s.mode !== 'chat' && autonomous && !mode.readOnly, mode: s.mode, skills: s.skills, customSkills: s.customSkills.filter(c => s.activeCustomSkills.includes(c.id)).map(c => c.text) };
     const group = parallel.length ? Math.random().toString(36).slice(2, 10) : undefined;
@@ -498,7 +496,7 @@ export function AgentPanel() {
         </button>
       </div>)}
     </div>}
-    <form className="composer" style={{ viewTransitionName: 'composer' } as React.CSSProperties} onSubmit={e => { e.preventDefault(); void send(); }}>
+    <form className="composer" onSubmit={e => { e.preventDefault(); void send(); }}>
       <div className="composer-context">
         <span className="ctx-chip folder" title={project.root}><Folder size={12} />{project.name}</span>
         {attachments.map(p => <span key={p} className="ctx-chip" title={p}><FileIcon path={p} size={12} />{p.split('/').pop()}<button type="button" aria-label={`Remove ${p}`} onClick={() => setAttachments(a => a.filter(x => x !== p))}><X size={11} /></button></span>)}
