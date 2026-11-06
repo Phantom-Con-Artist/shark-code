@@ -429,12 +429,15 @@ def run_cli(service, task_id, provider, model, cancelled: threading.Event, effor
         link_dependencies(root, copy)
         store.event(task_id, "tool_call", {"name": "isolated workspace copy", "call_id": "shark-copy", "target": ""})
         store.event(task_id, "tool_result", {"call_id": "shark-copy"})
-        raw_goal = store.get(task_id)["goal"]
-        store.event(task_id, "tool_call", {"name": "explore code graph", "call_id": "shark-graph", "target": ""})
-        context, found = code_map(service, raw_goal)
-        store.event(task_id, "tool_result", {"call_id": "shark-graph", "found": found})
-        from .devtools import agent_note
-        goal = (brief or raw_goal) + context + agent_note()
+        task = store.get(task_id)
+        raw_goal = task["goal"]
+        goal = brief or raw_goal
+        if task.get("mode") != "chat":
+            store.event(task_id, "tool_call", {"name": "explore code graph", "call_id": "shark-graph", "target": ""})
+            context, found = code_map(service, raw_goal)
+            store.event(task_id, "tool_result", {"call_id": "shark-graph", "found": found})
+            from .devtools import agent_note
+            goal += context + agent_note()
         mcp = None
         env = {**os.environ, "GIT_CEILING_DIRECTORIES": str(copy.parent)}
         try:

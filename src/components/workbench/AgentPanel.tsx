@@ -394,7 +394,7 @@ export function AgentPanel() {
     const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
     if (empty && doc.startViewTransition && !s.reduceMotion) doc.startViewTransition(start); else start();
     pinned.current = true;
-    const shared = { workflow: autonomous && !mode.readOnly, mode: s.mode, skills: s.skills, customSkills: s.customSkills.filter(c => s.activeCustomSkills.includes(c.id)).map(c => c.text) };
+    const shared = { workflow: s.mode !== 'chat' && autonomous && !mode.readOnly, mode: s.mode, skills: s.skills, customSkills: s.customSkills.filter(c => s.activeCustomSkills.includes(c.id)).map(c => c.text) };
     const group = parallel.length ? Math.random().toString(36).slice(2, 10) : undefined;
     const ok = await agent.run(goalText, { provider: s.provider, model, apiKey: s.keys[s.provider], effort, ...shared, group });
     if (ok && group) for (const id of parallel.filter(p => p !== s.provider && readiness(p, native, agent.providers, s.keys).ready))
@@ -468,7 +468,7 @@ export function AgentPanel() {
               <Icon size={15} /><span className="text"><span>{m.label}</span><small>{m.hint}</small></span>{m.id === s.mode && <Check size={14} />}
             </button>; })}
             <hr />
-            {!mode.readOnly && <label className="workflow-option"><input type="checkbox" checked={autonomous} onChange={e => setAutonomous(e.target.checked)} />
+            {s.mode !== 'chat' && !mode.readOnly && <label className="workflow-option"><input type="checkbox" checked={autonomous} onChange={e => setAutonomous(e.target.checked)} />
               <span>Multi-step workflow<small>Keep progress, run configured checks, and ask before applying.</small></span></label>}
             <div className="group label">Skills</div>
             <div className="skill-chips">

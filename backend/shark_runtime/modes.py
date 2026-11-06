@@ -57,7 +57,7 @@ def compose(goal: str, mode: str = "builder", skills=(), custom=()) -> str:
     parts = [spec["brief"]]
     parts += [SKILLS[s] for s in skills if s in SKILLS]
     parts += ["STYLE (user skill): " + re.sub(r"\s+", " ", c)[:600] for c in custom if isinstance(c, str) and c.strip()][:5]
-    return "\n".join(parts) + "\n\nTASK:\n" + goal
+    return "\n".join(parts) + ("\n\nMESSAGE:\n" if mode == "chat" else "\n\nTASK:\n") + goal
 
 
 ERROR_PATTERNS = [

@@ -66,6 +66,24 @@ class CliAdapterTests(unittest.TestCase):
         self.path.stop()
         self.tmp.cleanup()
 
+    def test_chat_skips_automatic_project_retrieval_and_tool_probes(self):
+        script = Path(self.tmp.name) / 'bin' / 'claude'
+        script.write_text("#!/bin/sh\necho '{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"Happy to brainstorm.\"}'\n")
+        task = self.service.execute('task/create', {'goal': "Let's brainstorm"})
+        host = AgentHost(self.service)
+        self.service.agent = host
+        with patch('shark_runtime.cli_agents.code_map') as code_map, patch('shark_runtime.devtools.agent_note') as agent_note:
+            host.start(task['id'], '', 'claude-code', mode='chat')
+            end = time.monotonic() + 20
+            while host.active and time.monotonic() < end:
+                time.sleep(0.02)
+            self.assertFalse(host.active)
+            code_map.assert_not_called()
+            agent_note.assert_not_called()
+        events = self.service.store.events(task['id'], 0, 100)['events']
+        self.assertEqual(self.service.store.get(task['id'])['status'], 'completed', events)
+        self.assertFalse(any(e['kind'] == 'tool_call' and e['data'].get('call_id') == 'shark-graph' for e in events))
+
     def test_mcp_inspects_candidate_and_retains_its_evidence(self):
         script = Path(self.tmp.name) / 'bin' / 'muse'
         script.write_text("#!" + str(Path(sys.executable).resolve()) + "\n" + r"""

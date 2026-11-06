@@ -41,6 +41,14 @@ class WaitingModel(BaseLlm):
         yield LlmResponse(content=types.Content(role='model', parts=[types.Part(text='late')]))
 
 
+class ConversationModel(BaseLlm):
+    async def generate_content_async(self, llm_request, stream=False):
+        instruction = str(llm_request.config.system_instruction)
+        assert 'helpful conversation partner' in instruction, instruction
+        assert 'Start with explore' not in instruction, instruction
+        yield LlmResponse(content=types.Content(role='model', parts=[types.Part(text='How about Moonlight or Tidepool?')]))
+
+
 class AdkTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -95,3 +103,16 @@ class AdkTests(unittest.TestCase):
         host.cancel(self.task['id'])
         self.wait_finished(host, timeout=5)
         self.assertEqual(self.service.store.get(self.task['id'])['status'], 'cancelled')
+
+    def test_chat_answers_without_tools_or_a_proposal(self):
+        self.task = self.service.execute('task/create', {'goal': "Let's brainstorm names"})
+        host = AgentHost(self.service, model_factory=lambda _: ConversationModel(model='offline-chat'))
+        self.service.agent = host
+        host.start(self.task['id'], 'offline-chat', mode='chat')
+        self.wait_finished(host)
+        task = self.service.store.get(self.task['id'])
+        events = self.service.store.events(task['id'])['events']
+        self.assertEqual(task['status'], 'completed', events)
+        self.assertIsNone(task['proposal_id'])
+        self.assertFalse(any(e['kind'] == 'tool_call' for e in events))
+        self.assertTrue(any(e['kind'] == 'text' and 'Tidepool' in e['data']['text'] for e in events))

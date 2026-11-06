@@ -51,7 +51,7 @@ export const useAgentWorkspace = create<AgentWorkspace>((set, get) => ({
   run: async (goal, { provider, model, apiKey, effort, mode, skills, customSkills, group, workflow }) => {
     set({ busy: true, error: '' });
     try {
-      const created = workflow ? await sharkWorkflows.create(goal, { provider, model, ...(effort ? { effort } : {}), ...(mode ? { mode } : {}), skills: skills ?? [], custom_skills: customSkills ?? [], ...(group ? { group } : {}) }) : null;
+      const created = workflow && mode !== 'chat' ? await sharkWorkflows.create(goal, { provider, model, ...(effort ? { effort } : {}), ...(mode ? { mode } : {}), skills: skills ?? [], custom_skills: customSkills ?? [], ...(group ? { group } : {}) }) : null;
       const task = created?.task ?? await sharkWorkspace.createTask(goal);
       set(s => ({ tasks: [task, ...s.tasks], activeId: task.id, events: [], cursor: 0, proposal: null, impact: null }));
       if (created) await sharkWorkflows.start(created.workflow.id, apiKey);
@@ -63,7 +63,7 @@ export const useAgentWorkspace = create<AgentWorkspace>((set, get) => ({
   },
   spawn: async (goal, o) => {
     try {
-      const created = o.workflow ? await sharkWorkflows.create(goal, { provider: o.provider, model: o.model, ...(o.effort ? { effort: o.effort } : {}), ...(o.mode ? { mode: o.mode } : {}), skills: o.skills ?? [], custom_skills: o.customSkills ?? [], ...(o.group ? { group: o.group } : {}) }) : null;
+      const created = o.workflow && o.mode !== 'chat' ? await sharkWorkflows.create(goal, { provider: o.provider, model: o.model, ...(o.effort ? { effort: o.effort } : {}), ...(o.mode ? { mode: o.mode } : {}), skills: o.skills ?? [], custom_skills: o.customSkills ?? [], ...(o.group ? { group: o.group } : {}) }) : null;
       const task = created?.task ?? await sharkWorkspace.createTask(goal);
       set(s => ({ tasks: [task, ...s.tasks] }));
       if (created) await sharkWorkflows.start(created.workflow.id, o.apiKey);

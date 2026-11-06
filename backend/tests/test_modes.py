@@ -3,6 +3,11 @@ from shark_runtime.modes import MODES, classify, compose
 
 
 class ModeTests(unittest.TestCase):
+    def test_chat_wraps_a_message_without_a_task_template(self):
+        text = compose("Let's brainstorm names", "chat")
+        self.assertTrue(text.endswith("MESSAGE:\nLet's brainstorm names"))
+        self.assertNotIn("TASK:\n", text)
+
     def test_compose_wraps_goal_with_mode_and_skills(self):
         text = compose("Fix it", "debugger", ["caveman"], ["Always mention Big-O"])
         self.assertTrue(text.startswith("MODE: DEBUGGER"))
