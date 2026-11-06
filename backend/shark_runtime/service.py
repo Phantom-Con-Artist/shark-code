@@ -11,12 +11,12 @@ from .codebase import Codebase
 from .codebase.gateway import OPERATIONS, dispatch as intelligence_dispatch
 
 # Bump when the app depends on new runtime methods or parameters; the UI offers a restart if older.
-RUNTIME_VERSION = 7
+RUNTIME_VERSION = 8
 CORE_TOOLS = {"workspace/list", "workspace/snapshot", "file/read", "code/search", "code/outline",
     "artifact/read", "cache/stats", "changes/preview", "changes/apply", "changes/revert",
     "changes/pending", "changes/recover", "changes/inspect"}
 APP_TOOLS = {"workspace/context", "graph/index", "graph/query", "graph/impact", "changes/analyze",
-    "task/create", "task/list", "task/get", "task/context", "task/propose", "task/apply", "task/events",
+    "task/create", "task/list", "task/get", "task/context", "task/propose", "task/apply", "task/events", "task/delete",
     "agent/start", "agent/cancel", "agent/providers", "agent/commands", "agent/models", "agent/modes",
     "git/status", "git/diff", "git/log", "git/stage", "git/unstage", "git/commit", "git/branches", "git/checkout", "git/sync", "deps/list", "tools/detect", "tools/analyze",
     "browser/serve", "browser/locate", "browser/check", "lsp/start", "lsp/request", "lsp/notify", "lsp/poll"}
@@ -181,7 +181,7 @@ class Service:
         if method == "task/list":
             self.fields(p, optional={"limit"})
             return self.store.list(**p)
-        if method in {"task/get", "task/events", "task/context", "task/propose", "task/apply", "agent/start", "agent/cancel"}:
+        if method in {"task/get", "task/events", "task/context", "task/propose", "task/apply", "task/delete", "agent/start", "agent/cancel"}:
             return self.task_method(method, p)
         raise Fault("unknown_method", method)
 
@@ -217,6 +217,11 @@ class Service:
             return task
         if method == "task/events":
             return self.store.events(task["id"], p.get("after", 0), p.get("limit", 50))
+        if method == "task/delete":
+            if task["status"] == "running":
+                raise Fault("invalid_state", "Cancel the running task before deleting it")
+            self.store.delete(task["id"])
+            return {"ok": True}
         if method == "task/context":
             result = self.context(p.get("query", task["goal"]))
             self.store.event(task["id"], "explored", {"revision": result["graph"]["revision"]})

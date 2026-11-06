@@ -16,70 +16,70 @@
   --t-fast: 120ms;
   --t: 200ms;
 
-  /* Palette: Radix Slate (neutral, step roles: 1-2 app bg, 3-5 surfaces, 6-8 borders, 11-12 text)
-     + Radix Teal as the single accent. Values are hex so WebKitGTK and Chromium render identically. */
-  --bg: #111113;            /* slate 1: chrome, rail, sidebar */
-  --panel: #111113;
-  --chat: #18191b;          /* slate 2: main canvas */
-  --editor: #18191b;
-  --composer: #1d1e21;      /* between slate 2 and 3: raised input surface */
-  --raised: #212225;        /* slate 3 */
-  --overlay: #1d1e21;       /* menus, dialogs */
-  --input: #111113;
-  --hover: rgba(221, 234, 248, 0.05);
-  --active: rgba(221, 234, 248, 0.09);
-  --line: #232528;          /* hairline separators */
-  --line-strong: #363a3f;   /* slate 6: control borders */
-  --fg: #edeef0;            /* slate 12 */
-  --fg-2: #b0b4ba;          /* slate 11 */
-  --fg-3: #8b8f97;
-  --fg-4: #696e77;          /* slate 9: hints only */
-  --accent: #0bd8b6;        /* teal 11 (text/icons on dark) */
-  --accent-strong: #12a594; /* teal 9 (fills) */
-  --accent-soft: rgba(18, 165, 148, 0.16);
-  --accent-line: rgba(11, 216, 182, 0.45);
-  --on-accent: #04201c;
-  --ok: #3dd68c;
+  /* Palette: VS Code-style near-black chrome + Atom-soft surfaces, with one electric emerald accent.
+     Values are hex so WebKitGTK and Chromium render identically. */
+  --bg: #121212;            /* chrome, rail, sidebar — VS Code near-black */
+  --panel: #121212;
+  --chat: #1a1a1a;          /* main canvas */
+  --editor: #1a1a1a;
+  --composer: #1f1f1f;      /* raised input surface */
+  --raised: #242424;
+  --overlay: #1f1f1f;       /* menus, dialogs */
+  --input: #121212;
+  --hover: rgba(232, 245, 239, 0.05);
+  --active: rgba(232, 245, 239, 0.09);
+  --line: #262626;          /* hairline separators */
+  --line-strong: #3a3a3a;   /* control borders */
+  --fg: #e8f5ef;
+  --fg-2: #a9b3af;
+  --fg-3: #868f8b;
+  --fg-4: #656e6a;          /* hints only */
+  --accent: #00e68a;        /* electric emerald (text/icons on dark) */
+  --accent-strong: #00c475; /* fills */
+  --accent-soft: rgba(0, 230, 138, 0.16);
+  --accent-line: rgba(0, 230, 138, 0.45);
+  --on-accent: #04120d;
+  --ok: #3ddc8c;
   --warn: #ffca16;
   --danger: #ff9592;
   --danger-soft: rgba(229, 72, 77, 0.12);
   --danger-line: rgba(255, 149, 146, 0.32);
-  --ok-soft: rgba(61, 214, 140, 0.11);
-  --shadow: 0 0 0 1px #2b2e33, 0 16px 40px -12px rgba(0, 0, 0, 0.6), 0 4px 12px -4px rgba(0, 0, 0, 0.4);
-  --scrim: rgba(8, 9, 10, 0.6);
+  --ok-soft: rgba(61, 220, 140, 0.11);
+  --shadow: 0 0 0 1px #2e2e2e, 0 16px 40px -12px rgba(0, 0, 0, 0.65), 0 4px 12px -4px rgba(0, 0, 0, 0.45);
+  --scrim: rgba(6, 8, 7, 0.6);
   color-scheme: dark;
 }
 
 :root[data-theme='light'] {
-  --bg: #f9f9fb;            /* slate 2 */
-  --panel: #f9f9fb;
-  --chat: #fcfcfd;          /* slate 1 */
-  --editor: #fcfcfd;
-  --composer: #fdfdfe;
-  --raised: #f0f0f3;        /* slate 3 */
-  --overlay: #fdfdfe;
-  --input: #fcfcfd;
-  --hover: rgba(0, 9, 50, 0.04);
-  --active: rgba(0, 9, 50, 0.07);
-  --line: #e8e8ec;          /* slate 4 */
-  --line-strong: #d9d9e0;   /* slate 6 */
-  --fg: #1c2024;            /* slate 12 */
-  --fg-2: #60646c;          /* slate 11 */
-  --fg-3: #70747c;
-  --fg-4: #8b8d98;          /* slate 9 */
-  --accent: #008573;        /* teal 11 */
-  --accent-strong: #12a594;
-  --accent-soft: rgba(18, 165, 148, 0.1);
-  --accent-line: rgba(0, 133, 115, 0.4);
+  --bg: #f7f9f8;
+  --panel: #f7f9f8;
+  --chat: #fcfdfc;
+  --editor: #fcfdfc;
+  --composer: #fdfefd;
+  --raised: #eff3f1;
+  --overlay: #fdfefd;
+  --input: #fcfdfc;
+  --hover: rgba(4, 30, 20, 0.04);
+  --active: rgba(4, 30, 20, 0.07);
+  --line: #e6ebe8;
+  --line-strong: #d6ded9;
+  --fg: #16201b;
+  --fg-2: #56635d;
+  --fg-3: #66726c;
+  --fg-4: #86918c;
+  --accent: #00875f;        /* darker emerald for contrast on light surfaces */
+  --accent-strong: #00a873;
+  --accent-soft: rgba(0, 135, 95, 0.1);
+  --accent-line: rgba(0, 135, 95, 0.4);
   --on-accent: #ffffff;
-  --ok: #218358;
+  --ok: #1f8a5a;
   --warn: #ab6400;
   --danger: #ce2c31;
   --danger-soft: rgba(229, 72, 77, 0.08);
   --danger-line: rgba(206, 44, 49, 0.28);
-  --ok-soft: rgba(33, 131, 88, 0.09);
-  --shadow: 0 0 0 1px #e0e1e6, 0 16px 40px -14px rgba(28, 32, 36, 0.18), 0 4px 10px -4px rgba(28, 32, 36, 0.08);
-  --scrim: rgba(28, 32, 36, 0.18);
+  --ok-soft: rgba(31, 138, 90, 0.09);
+  --shadow: 0 0 0 1px #dfe6e2, 0 16px 40px -14px rgba(16, 30, 24, 0.18), 0 4px 10px -4px rgba(16, 30, 24, 0.08);
+  --scrim: rgba(16, 30, 24, 0.18);
   color-scheme: light;
 }
 
@@ -522,7 +522,7 @@ details.impact li small { display: block; color: var(--fg-4); font-family: var(-
 .rail-btn.active::before { content: ''; position: absolute; left: -4px; top: 9px; bottom: 9px; width: 2px; border-radius: 2px; background: var(--accent); }
 .rail-badge { position: absolute; right: 5px; bottom: 5px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 99px; font-size: 9.5px; font-weight: 700; line-height: 15px; text-align: center; background: var(--accent); color: var(--on-accent); }
 .rail-sep { width: 20px; height: 1px; background: var(--line-strong); margin: 6px 0; }
-.avatar { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #111113; flex-shrink: 0; }
+.avatar { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; color: #0b1410; flex-shrink: 0; }
 .avatar.sm { width: 14px; height: 14px; font-size: 8.5px; }
 .profile-pop { min-width: 270px; }
 .profile-row { display: flex; align-items: center; gap: 2px; }
@@ -535,6 +535,11 @@ details.impact li small { display: block; color: var(--fg-4); font-family: var(-
 .session-row.active { background: var(--active); color: var(--fg); }
 .session-row .text { display: flex; flex-direction: column; min-width: 0; }
 .session-row small { color: var(--fg-4); font-size: 11.5px; }
+.session-item { position: relative; display: flex; align-items: center; }
+.session-item .session-row { flex: 1; min-width: 0; padding-right: 30px; }
+.session-item .icon-btn.del { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); opacity: 0; color: var(--fg-4); }
+.session-item:hover .icon-btn.del, .session-item .icon-btn.del:focus-visible { opacity: 1; }
+.session-item .icon-btn.del:hover:not(:disabled) { background: var(--danger-soft); color: var(--danger); }
 .run-group { display: flex; align-items: center; gap: 6px; padding: 10px 8px 4px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-4); }
 .task-row { display: flex; align-items: center; gap: 2px; padding-right: 2px; border-radius: var(--radius-sm); }
 .task-row:hover { background: var(--hover); }
@@ -967,7 +972,7 @@ details.impact li small { display: block; color: var(--fg-4); font-family: var(-
 .cv-tools { position: absolute; left: 12px; bottom: 12px; display: flex; align-items: center; gap: 2px; padding: 3px; background: var(--overlay); border: 1px solid var(--line-strong); border-radius: var(--radius-lg); cursor: default; }
 .cv-zoom { font-size: 11px; min-width: 38px; text-align: center; color: var(--fg-3); } .cv-sep { width: 1px; height: 16px; background: var(--line-strong); margin: 0 4px; }
 
-.dock { height: 300px; flex-shrink: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); background: var(--panel); min-height: 0; }
+.dock { flex-shrink: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); background: var(--panel); min-height: 0; }
 .dock-tabs { display: flex; align-items: center; gap: 2px; padding: 4px 8px; border-bottom: 1px solid var(--line); }
 .dock-tabs > button[role='tab'] { height: 24px; padding: 0 10px; border-radius: 6px; font-size: 12px; color: var(--fg-3); } .dock-tabs > button[aria-selected='true'] { background: var(--active); color: var(--fg); }
 .dock-body { flex: 1; min-height: 0; overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }

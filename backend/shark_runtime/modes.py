@@ -9,6 +9,11 @@ from __future__ import annotations
 import re
 
 MODES = {
+    "chat": {"label": "Chat", "read_only": False, "brief": (
+        "MODE: CHAT. This is a normal open conversation, not a structured engineering task. Respond naturally to "
+        "whatever is asked: questions, brainstorming, writing, quick snippets, or casual talk. Do only what is "
+        "asked; do not assume a build/review/plan structure, and do not read or edit files unless the request "
+        "needs it or asks for it.")},
     "builder": {"label": "Builder", "read_only": False, "brief": (
         "MODE: BUILDER. Implement the request end to end. Read the relevant code first, follow the project's existing "
         "patterns, keep the change as small as the goal allows, and handle edge cases. Finish with what changed, why, "

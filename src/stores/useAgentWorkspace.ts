@@ -7,7 +7,7 @@ interface AgentWorkspace {
   tasks: AgentTask[]; activeId: string; events: TaskEvent[]; cursor: number;
   impact: ImpactReport | null; proposal: ChangePreview | null;
   providers: ProviderStatus[]; commands: SlashCommand[]; catalog: Record<string, { id: string; label: string }[]>; loadModels(provider: string): Promise<void>; error: string; busy: boolean; connected: boolean;
-  connect(): Promise<void>; select(id: string): Promise<void>; fresh(): void;
+  connect(): Promise<void>; select(id: string): Promise<void>; fresh(): void; remove(id: string): Promise<void>;
   run(goal: string, options: RunOptions): Promise<boolean>;
   spawn(goal: string, options: RunOptions): Promise<void>; refreshTasks(): Promise<void>;
   poll(): Promise<void>; review(): Promise<void>; apply(): Promise<void>; cancel(): Promise<void>; clearError(): void;
@@ -42,6 +42,12 @@ export const useAgentWorkspace = create<AgentWorkspace>((set, get) => ({
     await get().poll(); await get().review();
   },
   fresh: () => set({ activeId: '', events: [], cursor: 0, proposal: null, impact: null, error: '' }),
+  remove: async id => {
+    try {
+      await sharkWorkspace.deleteTask(id);
+      set(s => ({ tasks: s.tasks.filter(t => t.id !== id), ...(s.activeId === id ? { activeId: '', events: [], cursor: 0, proposal: null, impact: null } : {}) }));
+    } catch (e) { set({ error: message(e) }); }
+  },
   run: async (goal, { provider, model, apiKey, effort, mode, skills, customSkills, group, workflow }) => {
     set({ busy: true, error: '' });
     try {

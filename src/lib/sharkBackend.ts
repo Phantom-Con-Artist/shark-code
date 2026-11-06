@@ -180,6 +180,7 @@ export const sharkWorkspace = {
   analyze: (id: string) => request<{ proposal: ChangePreview; impact: ImpactReport }>('changes/analyze', { id }),
   createTask: (goal: string) => request<AgentTask>('task/create', { goal }),
   task: (id: string) => request<AgentTask>('task/get', { id }),
+  deleteTask: (id: string) => request<{ ok: boolean }>('task/delete', { id }),
   taskContext: (id: string, query: string) => request<{ graph: GraphResult }>('task/context', { id, query }),
   propose: (id: string, changes: FileOperation[]) => request<{ task: AgentTask; proposal: ChangePreview; impact: ImpactReport }>('task/propose', { id, changes }),
   apply: (id: string) => request<{ task: AgentTask; proposal: ChangePreview; graph_refresh: string }>('task/apply', { id }),

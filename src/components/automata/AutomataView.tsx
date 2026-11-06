@@ -4,6 +4,8 @@ import { Cpu, FlaskConical, Play, Plus, Trash2, Workflow } from 'lucide-react';
 import { useAutomata } from '../../stores/useAutomata';
 import { useAgentWorkspace } from '../../stores/useAgentWorkspace';
 import { useProjectStore } from '../../stores/useProjectStore';
+import { LAYOUT_DEFAULTS, useSettings } from '../../stores/useSettings';
+import { Splitter } from '../workbench/primitives';
 import { Canvas } from './Canvas';
 import { Dock } from './Dock';
 
@@ -11,6 +13,7 @@ export function AutomataView() {
   const a = useAutomata();
   const connected = useAgentWorkspace(s => s.connected);
   const root = useProjectStore(s => s.root);
+  const dockHeight = useSettings(s => s.dockHeight);
   const [picker, setPicker] = useState(false);
   const native = isTauri();
 
@@ -59,6 +62,10 @@ export function AutomataView() {
         </div>
       </div>}
     </div>
-    {a.graph && a.dockOpen && <Dock />}
+    {a.graph && a.dockOpen && <>
+      <Splitter axis="y" invert label="Resize details panel" value={dockHeight} min={160} max={720}
+        onChange={v => useSettings.getState().set({ dockHeight: v })} onReset={() => useSettings.getState().set({ dockHeight: LAYOUT_DEFAULTS.dockHeight })} />
+      <Dock height={dockHeight} />
+    </>}
   </div>;
 }

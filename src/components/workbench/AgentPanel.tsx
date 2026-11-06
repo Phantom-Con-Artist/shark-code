@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import {
   AlertCircle, ArrowRight, ArrowUp, AtSign, BookOpen, Bot, Bug, Check, ChevronDown, ChevronRight, CircleAlert, CornerDownRight, FileCode2, FilePen, FilePlus2,
-  FileSearch, FlaskConical, Folder, FolderTree, GitCompareArrows, Globe, Hammer, History, Info, ListChecks, Map as MapIcon, Network, Plus, RefreshCw, Search,
+  FileSearch, FlaskConical, Folder, FolderTree, GitCompareArrows, Globe, Hammer, History, Info, ListChecks, Map as MapIcon, MessagesSquare, Network, Plus, RefreshCw, Search,
   Layers, RotateCw, Settings2, ShieldAlert, Sparkles, Square, SquareTerminal, Wand2, Wrench, X, Zap,
 } from 'lucide-react';
 import { useAgentWorkspace } from '../../stores/useAgentWorkspace';
@@ -79,7 +79,7 @@ export function contextState(usage: Usage | null, engine?: string | null) {
   const cache = cacheRate == null ? null : cacheRate >= 0.6 ? 'hot' : cacheRate >= 0.2 ? 'warm' : (live ?? usage.input) > 8000 ? 'cold' : null;
   return { window, live, fill, cacheRate, cache } as const;
 }
-export const MODE_ICONS: Record<ModeId, typeof Wrench> = { builder: Hammer, debugger: Bug, review: ShieldAlert, planner: ListChecks, explain: BookOpen, tests: FlaskConical, refactor: Wand2 };
+export const MODE_ICONS: Record<ModeId, typeof Wrench> = { chat: MessagesSquare, builder: Hammer, debugger: Bug, review: ShieldAlert, planner: ListChecks, explain: BookOpen, tests: FlaskConical, refactor: Wand2 };
 
 function toBlocks(events: TaskEvent[], running: boolean) {
   const blocks: Block[] = [];

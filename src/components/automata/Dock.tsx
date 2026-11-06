@@ -198,7 +198,7 @@ function CodePanel() {
   </div>;
 }
 
-export function Dock() {
+export function Dock({ height }: { height: number }) {
   const a = useAutomata();
   const tabs: [typeof a.dock, string][] = [
     ['inspector', a.selected[0] ? 'Step' : 'Workflow'],
@@ -206,7 +206,7 @@ export function Dock() {
     ['intelligence', 'Intelligence'],
     ['code', 'Code'],
   ];
-  return <section className="dock" aria-label="Details">
+  return <section className="dock" aria-label="Details" style={{ height }}>
     <div className="dock-tabs" role="tablist">{tabs.map(([id, label]) => <button key={id} role="tab" aria-selected={a.dock === id} onClick={() => a.showDock(id)}>{label}</button>)}
       <span className="grow" /><button className="icon-btn sm" aria-label="Collapse details" onClick={() => useAutomata.setState({ dockOpen: false })}><ChevronDown size={14} /></button></div>
     {a.dock === 'inspector' ? <Inspector /> : a.dock === 'run' ? <RunPanel /> : a.dock === 'intelligence' ? <IntelligencePanel /> : <CodePanel />}

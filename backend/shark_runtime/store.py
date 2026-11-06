@@ -73,6 +73,12 @@ class Store:
         return {"events": page, "next_cursor": page[-1]["sequence"] if page else after,
                 "has_more": len(rows) > len(page)}
 
+    def delete(self, identity):
+        self.get(identity)
+        with self.lock, self.db:
+            self.db.execute("DELETE FROM events WHERE task_id=?", (identity,))
+            self.db.execute("DELETE FROM tasks WHERE id=?", (identity,))
+
     def close(self):
         with self.lock:
             self.db.close()

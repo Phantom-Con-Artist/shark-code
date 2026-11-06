@@ -6,8 +6,9 @@ export type ProviderId = 'claude-code' | 'codex' | 'muse' | 'antigravity' | 'ant
 export const CLI_ORDER: ProviderId[] = ['claude-code', 'codex', 'antigravity', 'muse'];
 export const API_ORDER: ProviderId[] = ['openrouter', 'anthropic', 'gemini'];
 export type Theme = 'system' | 'light' | 'dark';
-export type ModeId = 'builder' | 'debugger' | 'review' | 'planner' | 'explain' | 'tests' | 'refactor';
+export type ModeId = 'chat' | 'builder' | 'debugger' | 'review' | 'planner' | 'explain' | 'tests' | 'refactor';
 export const MODES: { id: ModeId; label: string; hint: string; readOnly: boolean }[] = [
+  { id: 'chat', label: 'Chat', hint: 'Just talk — no forced workflow', readOnly: false },
   { id: 'builder', label: 'Builder', hint: 'Implements the request end to end', readOnly: false },
   { id: 'debugger', label: 'Debugger', hint: 'Root cause first, then the minimal fix', readOnly: false },
   { id: 'review', label: 'Adversarial review', hint: 'Hunts for real defects · read-only', readOnly: true },
@@ -41,7 +42,7 @@ export interface Settings {
   readingFont: 'default' | 'readable'; highContrast: boolean; reduceMotion: boolean;
   wordWrap: boolean; minimap: boolean;
   sidebarOpen: boolean; editorOpen: boolean; terminalOpen: boolean;
-  sidebarWidth: number; editorWidth: number; terminalHeight: number; sidebarView: 'sessions' | 'components' | 'files' | 'search' | 'scm' | 'run' | 'browser' | 'plugins' | `plugin:${string}`;
+  sidebarWidth: number; editorWidth: number; terminalHeight: number; dockHeight: number; sidebarView: 'sessions' | 'components' | 'files' | 'search' | 'scm' | 'run' | 'browser' | 'plugins' | `plugin:${string}`;
   provider: ProviderId; models: Record<ProviderId, string>; efforts: Partial<Record<ProviderId, Effort>>; keys: Partial<Record<ProviderId, string>>;
   attachActiveFile: boolean; browserUrl: string; disabledPlugins: string[];
   view: 'shark' | 'code' | 'automata'; agentWidth: number; mode: ModeId; skills: string[]; customSkills: CustomSkill[]; activeCustomSkills: string[];
@@ -49,7 +50,7 @@ export interface Settings {
   toggle(key: 'sidebarOpen' | 'editorOpen' | 'terminalOpen'): void;
 }
 
-export const LAYOUT_DEFAULTS = { sidebarWidth: 248, editorWidth: 640, terminalHeight: 240 };
+export const LAYOUT_DEFAULTS = { sidebarWidth: 248, editorWidth: 640, terminalHeight: 240, dockHeight: 300 };
 
 export const useSettings = create<Settings>()(persist(set => ({
   theme: 'system', density: 'compact', fontSize: 13, editorFontSize: 13, readingFont: 'default',

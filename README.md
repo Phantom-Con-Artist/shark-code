@@ -53,12 +53,13 @@ You can run the same request on several engines at once from the mode menu ("Als
 ## Features
 
 **Chat**
-- Modes: Builder, Debugger, Adversarial review, Planner, Explain, Test writer, Refactor. Each mode sends the engine a fixed brief.
+- Modes: Chat, Builder, Debugger, Adversarial review, Planner, Explain, Test writer, Refactor. Each mode sends the engine a fixed brief; Chat is the free-form default — just talk, no forced build/review/plan structure.
 - Skills change how Shark writes (concise, teacher, senior, caveman), and you can add your own.
 - Step timeline with live status. Subagent steps nest under the step that started them.
 - A run timer while working, and the total time when done.
 - Context fill, prompt cache use, compaction and provider retries shown next to the chat box and in the thread.
 - Clear errors for quota, rate limits, sign-in, network and full context, each with a next step.
+- Session management in the sidebar: conversations sort newest first, are searchable by title, and can be deleted individually.
 
 **Durable workflows**
 - Multi-step plans keep a private candidate, checkpoints, evidence and bounded context across engine invocations.

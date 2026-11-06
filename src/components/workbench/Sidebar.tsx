@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
-import { ChevronRight, ChevronsDownUp, FilePlus2, FolderOpen, Hammer, Play, Plus, RefreshCw, Search, Sparkles, TestTube2, Wrench, X } from 'lucide-react';
+import { ChevronRight, ChevronsDownUp, FilePlus2, FolderOpen, Hammer, Play, Plus, RefreshCw, Search, Sparkles, TestTube2, Trash2, Wrench, X } from 'lucide-react';
 import { useAgentWorkspace } from '../../stores/useAgentWorkspace';
 import { PluginManager, PluginView, usePlugins } from './plugins';
 import { SourceControl } from './SourceControl';
@@ -36,16 +36,31 @@ export function Sidebar() {
 }
 
 const STATUS: Record<string, string> = { created: 'Not started', running: 'Working', review: 'Ready to review', applied: 'Applied', completed: 'Done', cancelled: 'Stopped', interrupted: 'Interrupted', failed: 'Failed' };
+function sessionTitle(goal: string) {
+  return goal.replace(/^\[automata\][\s\S]*?\[\/automata\]\n\n/, '').replace(/^\[context\][\s\S]*?\[\/context\]\n\n/, '').replace(/\n\nOpen file: .+$/, '').split('\n')[0];
+}
 function Sessions() {
   const agent = useAgentWorkspace();
   const native = useProjectStore(s => s.kind) === 'native';
+  const [query, setQuery] = useState('');
   if (!agent.tasks.length) return <p className="search-meta">{native ? 'Your conversations appear here. Each keeps its activity and review.' : 'Sessions are stored by the desktop app.'}</p>;
-  return <div className="results">
-    {agent.tasks.map(t => { const title = t.goal.replace(/^\[automata\][\s\S]*?\[\/automata\]\n\n/, '').replace(/^\[context\][\s\S]*?\[\/context\]\n\n/, '').replace(/\n\nOpen file: .+$/, '').split('\n')[0];
-      return <button key={t.id} className={`session-row ${t.id === agent.activeId ? 'active' : ''}`} onClick={() => void agent.select(t.id)}>
-        <span className={`dot ${t.status === 'running' ? 'live' : t.status === 'review' ? 'warn' : t.status === 'failed' ? 'err' : t.status === 'applied' || t.status === 'completed' ? 'ok' : ''}`} />
-        <span className="text"><span className="ellipsis">{title}</span><small>{STATUS[t.status]}{t.engine ? ` · ${PROVIDERS[t.engine as ProviderId]?.label ?? t.engine}` : ''}{t.mode && t.mode !== 'builder' ? ` · ${MODES.find(m => m.id === t.mode)?.label ?? t.mode}` : ''}{t.group ? ' · parallel' : ''} · {relativeTime(t.created_at)}</small></span>
-      </button>; })}
+  const q = query.trim().toLowerCase();
+  const matches = agent.tasks.filter(t => !q || sessionTitle(t.goal).toLowerCase().includes(q));
+  return <div className="explorer">
+    <div className="filter"><Search size={13} /><input className="field" placeholder="Search sessions…" value={query} onChange={e => setQuery(e.target.value)} aria-label="Search sessions" /></div>
+    {matches.length === 0 ? <p className="search-meta">No sessions match “{query}”.</p> : <div className="results">
+      {matches.map(t => { const title = sessionTitle(t.goal);
+        return <div key={t.id} className="session-item">
+          <button className={`session-row ${t.id === agent.activeId ? 'active' : ''}`} onClick={() => void agent.select(t.id)}>
+            <span className={`dot ${t.status === 'running' ? 'live' : t.status === 'review' ? 'warn' : t.status === 'failed' ? 'err' : t.status === 'applied' || t.status === 'completed' ? 'ok' : ''}`} />
+            <span className="text"><span className="ellipsis">{title}</span><small>{STATUS[t.status]}{t.engine ? ` · ${PROVIDERS[t.engine as ProviderId]?.label ?? t.engine}` : ''}{t.mode && t.mode !== 'builder' ? ` · ${MODES.find(m => m.id === t.mode)?.label ?? t.mode}` : ''}{t.group ? ' · parallel' : ''} · {relativeTime(t.created_at)}</small></span>
+          </button>
+          <button className="icon-btn sm del" aria-label={`Delete session: ${title || 'Untitled'}`} title="Delete session" disabled={t.status === 'running'}
+            onClick={e => { e.stopPropagation(); if (window.confirm(`Delete this session? “${title.slice(0, 80)}”\nThis removes its history. It can't be undone.`)) void agent.remove(t.id); }}>
+            <Trash2 size={13} />
+          </button>
+        </div>; })}
+    </div>}
   </div>;
 }
 
