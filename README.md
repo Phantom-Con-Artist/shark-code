@@ -186,3 +186,25 @@ More detail: [docs/backend](docs/backend/README.md).
 ## License
 
 [Apache 2.0](LICENSE)
+
+### Media and notebooks
+
+Open PNG, ICO, JPEG, GIF, WebP, AVIF and BMP files in the editor for an image preview with fit and zoom controls. Audio and video files open with playback controls; codec availability follows the desktop WebKit/GStreamer installation. Media streams through Tauri's scoped asset protocol instead of the text editor.
+
+`.ipynb` files open as notebooks: edit, add, reorder, convert and delete cells; preview Markdown and saved outputs; run one cell or all cells; interrupt, restart or shut down the kernel; and save outputs with the document. **File → New Notebook** creates a valid notebook. Shark includes a Python kernel and can select locally installed Jupyter kernels. Outputs remain unsaved until you save. Notebook documents share the workspace's 2 MiB text limit; execution output is bounded, and interactive widget/JavaScript outputs require a separate Jupyter frontend.
+
+The `shark_notebook` MCP tool and the API agent's `notebook` tool expose document reads, cell edits, kernel discovery, execution, polling and kernel controls. Edits return versioned changes for review; they do not apply to the real workspace. Notebook execution runs local code in the notebook directory. Read-only agent modes cannot execute notebooks.
+
+Codebase intelligence includes Python notebook symbols, imports, calls, quality, security, search and change impact. Findings carry cell IDs and cell-local line numbers; projected source lines are explicitly marked. Notebook outputs are excluded from source analysis. IPython magics and shell escapes are reported as analysis gaps; other installed kernel languages can execute, but do not yet have notebook syntax analysis.
+
+### Workbench browser
+
+Toggle **Browser** from the title bar or activity rail to open it in the main code workbench. **Expand browser** temporarily hides the sidebar and Shark panel. Fit or fixed preview widths are available. The element picker shows selectors and bounds; use ↑/↓ to inspect parents/children, Enter to select, or Esc to cancel. Add notes to several elements, then draft the collected feedback in Shark with source hints and viewport context.
+
+Run the media, notebook and browser UI smoke checks against a running dev server:
+
+```sh
+backend/.venv/bin/python scripts/workbench_ui_check.py http://localhost:1435
+```
+
+Explorer right-click menus provide file/folder creation, open, reveal, terminal, chat context, cut/copy/paste, path copying, rename and Move to Trash. F2 renames; Delete moves the selection to Trash after confirmation. Monaco retains its code context menu, and text fields, terminals and the page preview have their own quick actions. WebKitGTK's default context menu is suppressed in the Fedora shell. Shark's confirmation and text-entry dialogs use the app theme, keyboard focus handling and explicit action labels.

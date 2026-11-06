@@ -38,6 +38,10 @@ BUNDLED_LIBRARIES = (
     'networkx',
     'packaging',
     'docstring_parser',
+    'nbformat',
+    'jupyter_client',
+    'ipykernel',
+    'ipykernel.debugger',
 )
 
 
@@ -64,6 +68,9 @@ def check(require_browser=False):
         connection.close()
     from .mcp_server import server
     checks.append({'component': 'mcp', 'ready': server is not None})
+    notebook = json.dumps({'nbformat': 4, 'nbformat_minor': 5, 'metadata': {}, 'cells': [{'id': 'sample', 'cell_type': 'code', 'metadata': {}, 'source': 'def notebook_sample():\n    return 1', 'outputs': [], 'execution_count': None}]})
+    result = parse('sample.ipynb', notebook)
+    checks.append({'component': 'notebook-intelligence', 'ready': any(s.get('cell_id') == 'sample' for s in result['symbols'])})
     if require_browser:
         from playwright.sync_api import sync_playwright
         with sync_playwright() as playwright:

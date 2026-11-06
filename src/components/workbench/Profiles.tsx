@@ -1,3 +1,4 @@
+import { confirmAction } from '../../stores/useDialogs';
 import { useState } from 'react';
 import { Check, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useProfiles } from '../../stores/useProfiles';
@@ -19,7 +20,7 @@ export function ProfileMenu({ onDone }: { onDone(): void }) {
           {p.active === profile.id && <Check size={14} />}
         </button>}
       {editing !== profile.id && <button className="icon-btn sm" aria-label={`Rename ${profile.name}`} onClick={() => { setName(profile.name); setEditing(profile.id); }}><Pencil size={12} /></button>}
-      {profile.id !== 'default' && editing !== profile.id && <button className="icon-btn sm" aria-label={`Delete ${profile.name}`} onClick={() => { if (window.confirm(`Delete profile “${profile.name}” and its settings and keys?`)) p.remove(profile.id); }}><Trash2 size={12} /></button>}
+      {profile.id !== 'default' && editing !== profile.id && <button className="icon-btn sm" aria-label={`Delete ${profile.name}`} onClick={async () => { if (await confirmAction({title: 'Delete profile?', message: `Remove “${profile.name}” and its settings and keys?`, confirmLabel: 'Delete profile', danger: true})) p.remove(profile.id); }}><Trash2 size={12} /></button>}
     </div>)}
     <hr />
     {adding

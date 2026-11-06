@@ -28,7 +28,7 @@ from .cli_agents import which
 
 PICKER = r"""<script data-shark-picker>(() => {
   if (window.__sharkPicker) return; window.__sharkPicker = true;
-  let picking = false, box = null;
+  let picking = false, box = null, label = null, hovered = null;
   const post = (m) => { try { parent.postMessage(Object.assign({ source: 'shark-browser' }, m), '*'); } catch {} };
   const css = (el) => { if (!(el instanceof Element)) return '';
     if (el.id) return '#' + CSS.escape(el.id);
@@ -38,7 +38,7 @@ PICKER = r"""<script data-shark-picker>(() => {
       const cls = [...n.classList].filter(c => !c.startsWith('__shark')).slice(0, 2);
       if (cls.length) p += '.' + cls.map(c => CSS.escape(c)).join('.');
       const sib = n.parentElement ? [...n.parentElement.children].filter(c => c.tagName === n.tagName) : [];
-      if (sib.length > 1 && !cls.length) p += ':nth-of-type(' + (sib.indexOf(n) + 1) + ')';
+      if (sib.length > 1) p += ':nth-of-type(' + (sib.indexOf(n) + 1) + ')';
       parts.unshift(p); if (n.id) break; n = n.parentElement;
     }
     return parts.join(' > ');
@@ -46,18 +46,26 @@ PICKER = r"""<script data-shark-picker>(() => {
   const outline = (el) => { if (!box) { box = document.createElement('div'); box.className = '__shark-box';
       box.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483647;border:1.5px solid #12a594;background:rgba(18,165,148,.08);border-radius:3px;transition:all .08s ease-out';
       document.documentElement.appendChild(box); }
-    const r = el.getBoundingClientRect(); Object.assign(box.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', display: 'block' }); };
-  const over = (e) => { if (picking && e.target !== box) outline(e.target); };
-  const click = (e) => { if (!picking) return; e.preventDefault(); e.stopPropagation();
-    const el = e.target, r = el.getBoundingClientRect();
+    if (!label) { label = document.createElement('div'); label.className = '__shark-label'; label.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483647;max-width:80vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:#0b6d5e;color:white;padding:4px 7px;font:12px system-ui;border-radius:3px'; document.documentElement.appendChild(label); }
+    hovered = el;
+    const r = el.getBoundingClientRect(); Object.assign(box.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', display: 'block' });
+    label.textContent = css(el) + ' · ' + Math.round(r.width) + ' × ' + Math.round(r.height);
+    Object.assign(label.style, {left: Math.max(0, r.left) + 'px', top: Math.max(0, r.top > 26 ? r.top - 26 : r.bottom + 3) + 'px', display:'block'}); };
+  const over = (e) => { if (picking && e.target instanceof Element && e.target !== box && e.target !== label) outline(e.target); };
+  const select = (el) => {
+    if (!(el instanceof Element)) return;
+    const r = el.getBoundingClientRect();
     post({ type: 'pick', url: location.href, selector: css(el), tag: el.tagName.toLowerCase(), id: el.id || '',
       classes: [...el.classList], text: (el.innerText || el.textContent || '').trim().slice(0, 200),
-      html: el.outerHTML.slice(0, 1200), rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } });
+      html: el.outerHTML.slice(0, 1200), viewport: { w: innerWidth, h: innerHeight }, rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } });
     set(false); };
-  const set = (on) => { picking = on; document.documentElement.style.cursor = on ? 'crosshair' : ''; if (!on && box) box.style.display = 'none'; post({ type: 'picking', on }); };
-  addEventListener('mouseover', over, true); addEventListener('click', click, true);
-  addEventListener('keydown', (e) => { if (e.key === 'Escape' && picking) set(false); }, true);
-  addEventListener('message', (e) => { const d = e.data || {}; if (d.source === 'shark' && d.type === 'pick-mode') set(!!d.on); });
+  const click = (e) => { if (!picking) return; e.preventDefault(); e.stopImmediatePropagation(); select(e.target); };
+  const set = (on) => { picking = on; document.documentElement.style.cursor = on ? 'crosshair' : ''; if (!on && box) box.style.display = 'none'; if (!on && label) label.style.display = 'none'; if (on) { const under = [...document.querySelectorAll(':hover')].pop(); if (under && under !== box && under !== label) outline(under); } post({ type: 'picking', on }); };
+  addEventListener('mouseover', over, true); addEventListener('mousemove', over, true); addEventListener('click', click, true);
+  addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopImmediatePropagation(); const el = e.target; if (!(el instanceof Element)) return; const r = el.getBoundingClientRect(); post({type:'context-menu', x:e.clientX, y:e.clientY, pick:{url:location.href, selector:css(el), tag:el.tagName.toLowerCase(), id:el.id||'', classes:[...el.classList], text:(el.innerText||el.textContent||'').trim().slice(0,200), html:el.outerHTML.slice(0,1200), viewport:{w:innerWidth,h:innerHeight}, rect:{x:Math.round(r.x),y:Math.round(r.y),w:Math.round(r.width),h:Math.round(r.height)}}}); }, true);
+  addEventListener('keydown', (e) => { if (!picking) return; if (['Escape','Enter','ArrowUp','ArrowDown'].includes(e.key)) {e.preventDefault(); e.stopImmediatePropagation();} if (e.key === 'Escape') set(false); else if (e.key === 'Enter') select(hovered); else if (e.key === 'ArrowUp' && hovered?.parentElement) outline(hovered.parentElement); else if (e.key === 'ArrowDown' && hovered?.firstElementChild) outline(hovered.firstElementChild); }, true);
+  addEventListener('scroll', () => { if (picking && hovered) outline(hovered); }, true);
+  addEventListener('message', (e) => { const d = e.data || {}; if (e.source === parent && d.source === 'shark' && d.type === 'pick-mode') set(!!d.on); });
   const fwd = (level, args) => post({ type: 'console', level, message: args.map(a => { try { return a instanceof Error ? a.stack || a.message : typeof a === 'object' ? JSON.stringify(a) : String(a); } catch { return String(a); } }).join(' ').slice(0, 2000) });
   for (const level of ['error', 'warn']) { const orig = console[level]; console[level] = (...a) => { fwd(level, a); orig.apply(console, a); }; }
   addEventListener('error', (e) => fwd('error', [e.error || e.message + ' (' + e.filename + ':' + e.lineno + ')']));

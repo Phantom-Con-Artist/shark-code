@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { FileCode2, FileImage, FileJson, FileText, File as FileGeneric, Settings as Cog } from 'lucide-react';
+import { FileCode2, FileImage, FileJson, FileText, FileAudio, FileVideo, BookOpen, File as FileGeneric, Settings as Cog } from 'lucide-react';
 
 /** Shark Code mark (from assets/shark-code-black.png), drawn in the current text colour. */
 export function SharkMark({ className = 'brand-mark' }: { className?: string }) {
@@ -13,6 +13,10 @@ const ICONS: Record<string, [typeof FileGeneric, string]> = {
   rs: [FileCode2, 'rs'], py: [FileCode2, 'py'], go: [FileCode2, 'py'], java: [FileCode2, 'rs'], kt: [FileCode2, 'rs'], swift: [FileCode2, 'rs'], c: [FileCode2, 'ts'], cpp: [FileCode2, 'ts'], h: [FileCode2, 'ts'], sh: [FileCode2, 'cfg'],
   md: [FileText, 'md'], mdx: [FileText, 'md'], txt: [FileText, 'md'],
   png: [FileImage, 'img'], jpg: [FileImage, 'img'], jpeg: [FileImage, 'img'], gif: [FileImage, 'img'], svg: [FileImage, 'img'], webp: [FileImage, 'img'], ico: [FileImage, 'img'],
+  avif: [FileImage, 'img'], bmp: [FileImage, 'img'],
+  mp4: [FileVideo, 'img'], webm: [FileVideo, 'img'], mov: [FileVideo, 'img'], mkv: [FileVideo, 'img'], ogv: [FileVideo, 'img'], m4v: [FileVideo, 'img'],
+  mp3: [FileAudio, 'img'], wav: [FileAudio, 'img'], ogg: [FileAudio, 'img'], flac: [FileAudio, 'img'], m4a: [FileAudio, 'img'], aac: [FileAudio, 'img'], opus: [FileAudio, 'img'], oga: [FileAudio, 'img'],
+  ipynb: [BookOpen, 'py'],
 };
 export function FileIcon({ path, size = 14 }: { path: string; size?: number }) {
   const ext = path.split('/').pop()!.split('.').pop()!.toLowerCase();
@@ -23,6 +27,7 @@ export function FileIcon({ path, size = 14 }: { path: string; size?: number }) {
 export const LANGUAGE: Record<string, [string, string]> = {
   ts: ['typescript', 'TypeScript'], tsx: ['typescript', 'TypeScript React'], mts: ['typescript', 'TypeScript'], js: ['javascript', 'JavaScript'], jsx: ['javascript', 'JavaScript React'], mjs: ['javascript', 'JavaScript'], cjs: ['javascript', 'JavaScript'],
   json: ['json', 'JSON'], css: ['css', 'CSS'], scss: ['scss', 'SCSS'], less: ['less', 'Less'], html: ['html', 'HTML'], md: ['markdown', 'Markdown'], mdx: ['markdown', 'MDX'],
+  ipynb: ['json', 'Jupyter Notebook'],
   rs: ['rust', 'Rust'], py: ['python', 'Python'], go: ['go', 'Go'], toml: ['ini', 'TOML'], ini: ['ini', 'INI'], yaml: ['yaml', 'YAML'], yml: ['yaml', 'YAML'], sh: ['shell', 'Shell'], bash: ['shell', 'Shell'],
   java: ['java', 'Java'], kt: ['kotlin', 'Kotlin'], swift: ['swift', 'Swift'], c: ['cpp', 'C'], h: ['cpp', 'C'], cpp: ['cpp', 'C++'], sql: ['sql', 'SQL'], xml: ['xml', 'XML'], svg: ['xml', 'SVG'], dockerfile: ['dockerfile', 'Dockerfile'],
 };

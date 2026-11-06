@@ -1,5 +1,9 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { BookOpen, ChevronRight, Code2, Columns2, Crosshair, GitCompareArrows, Radar, RotateCcw, Sparkles, X } from 'lucide-react';
+import { BookOpen, ChevronRight, Code2, Columns2, Crosshair, GitCompareArrows, Globe, Radar, RotateCcw, Sparkles, X } from 'lucide-react';
+import { BrowserView } from './Browser';
+import { openWorkbenchBrowser } from '../../lib/workbenchBrowser';
+import { confirmAction } from '../../stores/useDialogs';
+import { isTauri } from '@tauri-apps/api/core';
 import { Markdown } from './Markdown';
 import { useSettings } from '../../stores/useSettings';
 import { sharkWorkspace, type ImpactReport } from '../../lib/sharkBackend';
@@ -12,11 +16,13 @@ import { FileIcon, SharkMark } from './primitives';
 
 const CodeEditor = lazy(() => import('./CodeEditor'));
 const ReviewView = lazy(() => import('./ReviewView'));
+const MediaPreview = lazy(() => import('./MediaPreview'));
+const NotebookEditor = lazy(() => import('./NotebookEditor'));
 
-export function closeTab(path: string) {
+export async function closeTab(path: string) {
   const project = useProjectStore.getState();
   const tab = project.tabs.find(t => t.path === path);
-  if (tab && tab.content !== tab.saved && !window.confirm(`Discard unsaved changes to ${path.split('/').pop()}?`)) return;
+  if (tab && tab.content !== tab.saved && !await confirmAction({title: 'Discard unsaved changes?', message: `Your edits to ${path.split('/').pop()} will be lost.`, confirmLabel: 'Discard changes', danger: true})) return;
   project.closeFile(path, true);
 }
 
@@ -27,27 +33,33 @@ export function EditorArea() {
   const setUi = useUi(s => s.set);
   const active = project.tabs.find(t => t.path === project.activePath);
   const showReview = view === 'review' && !!proposal;
+  const showBrowser = view === 'browser';
+  const [browserMounted, setBrowserMounted] = useState(showBrowser);
+  useEffect(() => { if (showBrowser) setBrowserMounted(true); }, [showBrowser]);
   const mdMode = useUi(s => s.mdMode);
   const isMd = !!active && /\.(md|mdx|markdown|html?|svg)$/i.test(active.path);
+  const isNotebook = !!active && /\.ipynb$/i.test(active.path);
 
   useEffect(() => { if (!proposal && view === 'review') setUi({ editorView: 'file' }); }, [proposal, view, setUi]);
   // Smart default per file type: documents open rendered, pages open side by side.
-  useEffect(() => { const p = project.activePath; if (/\.(md|mdx|markdown)$/i.test(p)) setUi({ mdMode: 'preview' }); else if (/\.(html?|svg)$/i.test(p)) setUi({ mdMode: 'split' }); }, [project.activePath, setUi]);
+  useEffect(() => { const p = project.activePath; if (/\.(md|mdx|markdown|ipynb)$/i.test(p)) setUi({ mdMode: 'preview' }); else if (/\.(html?|svg)$/i.test(p)) setUi({ mdMode: 'split' }); }, [project.activePath, setUi]);
   useEffect(() => {
+    if (isTauri()) return;
     const warn = (e: BeforeUnloadEvent) => { if (useProjectStore.getState().tabs.some(t => t.content !== t.saved)) { e.preventDefault(); e.returnValue = ''; } };
     window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn);
   }, []);
 
   return <section className="wb-editor" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }} aria-label="Editor">
-    {(project.tabs.length > 0 || proposal) && <div className="tabs" role="tablist" aria-label="Open files">
+    {(project.tabs.length > 0 || proposal || browserMounted || showBrowser) && <div className="tabs" role="tablist" aria-label="Open files">
+      {(browserMounted || showBrowser) && <div className={`tab ${showBrowser ? 'active' : ''}`} role="tab" aria-selected={showBrowser} tabIndex={0} onClick={() => setUi({editorView: 'browser'})} onKeyDown={e => {if (e.key === 'Enter') setUi({editorView: 'browser'});}}><Globe size={13} /><span className="tab-label">Browser</span><button className="tab-close" aria-label="Close browser" onClick={e => {e.stopPropagation(); setBrowserMounted(false); setUi({editorView: 'file', browserWide: false});}}><X size={13} /></button></div>}
       {proposal && <div className={`tab tab-review ${showReview ? 'active' : ''}`} role="tab" aria-selected={showReview} tabIndex={0}
         onClick={() => setUi({ editorView: 'review' })} onKeyDown={e => { if (e.key === 'Enter') setUi({ editorView: 'review' }); }}>
         <GitCompareArrows size={14} /><span className="tab-label">Review · {proposal.files.length} {proposal.files.length === 1 ? 'file' : 'files'}</span><span style={{ width: 6 }} />
       </div>}
       {project.tabs.map(t => {
-        const isActive = !showReview && t.path === project.activePath;
+        const isActive = !showReview && !showBrowser && t.path === project.activePath;
         const dirty = t.content !== t.saved;
-        return <div key={t.path} className={`tab ${isActive ? 'active' : ''}`} role="tab" aria-selected={isActive} tabIndex={0} title={t.path}
+        return <div key={t.path} data-file-path={t.path} className={`tab ${isActive ? 'active' : ''}`} role="tab" aria-selected={isActive} tabIndex={0} title={t.path}
           onClick={() => { void project.openFile(t.path); setUi({ editorView: 'file' }); }}
           onKeyDown={e => { if (e.key === 'Enter') { void project.openFile(t.path); setUi({ editorView: 'file' }); } }}
           onAuxClick={e => { if (e.button === 1) closeTab(t.path); }}>
@@ -61,26 +73,28 @@ export function EditorArea() {
       <div className="tabs-fill" />
     </div>}
 
-    {!showReview && active && <div className="crumbs">
+    {!showReview && !showBrowser && active && <div className="crumbs">
       {active.path.split('/').map((seg, i) => <span key={i} style={{ display: 'contents' }}>
         {i > 0 && <ChevronRight size={11} />}<button className="seg" onClick={() => useSettings.getState().set({ sidebarOpen: true, sidebarView: 'files' })}>{seg}</button>
       </span>)}
       <span className="state">
-        {useProjectStore.getState().kind === 'native' && <BlastRadius path={active.path} />}
+        {!active.media && useProjectStore.getState().kind === 'native' && <BlastRadius path={active.path} />}
         {isMd && <div className="segmented" role="group" aria-label="Preview">
           <button aria-pressed={mdMode === 'edit'} title="Source" onClick={() => setUi({ mdMode: 'edit' })}><Code2 size={12} /></button>
           <button aria-pressed={mdMode === 'split'} title="Side by side" onClick={() => setUi({ mdMode: 'split' })}><Columns2 size={12} /></button>
           <button aria-pressed={mdMode === 'preview'} title="Preview · Ctrl Shift V" onClick={() => setUi({ mdMode: 'preview' })}><BookOpen size={12} /></button>
         </div>}
-        {active.content !== active.saved ? <span>Unsaved · <kbd>Ctrl S</kbd></span> : <span>{project.notice || 'Saved'}</span>}
+        {isNotebook && <div className="segmented" role="group" aria-label="Notebook view"><button aria-pressed={mdMode !== 'edit'} title="Notebook cells" onClick={() => setUi({mdMode: 'preview'})}><BookOpen size={12} /></button><button aria-pressed={mdMode === 'edit'} title="Notebook JSON source" onClick={() => setUi({mdMode: 'edit'})}><Code2 size={12} /></button></div>}
+        {active.media ? <span>Read-only preview</span> : active.content !== active.saved ? <span>Unsaved · <kbd>Ctrl S</kbd></span> : <span>{project.notice || 'Saved'}</span>}
         <button className="icon-btn sm" title="Reload from disk" aria-label="Reload from disk" disabled={project.busy}
-          onClick={() => { if (active.content === active.saved || window.confirm('Discard unsaved edits and reload this file?')) void project.reloadFile(active.path); }}><RotateCcw size={12} /></button>
+          onClick={async () => { if (active.content === active.saved || await confirmAction({title: 'Reload from disk?', message: 'Unsaved edits to this file will be discarded.', confirmLabel: 'Discard and reload', danger: true})) void project.reloadFile(active.path); }}><RotateCcw size={12} /></button>
       </span>
     </div>}
 
-    <div className="editor-host">
+    {(browserMounted || showBrowser) && <div className="workbench-browser" hidden={!showBrowser}><BrowserView /></div>}
+    <div className="editor-host" hidden={showBrowser}>
       <Suspense fallback={<div className="editor-empty">Loading editor…</div>}>
-        {showReview ? <ReviewView /> : active ? (isMd && mdMode !== 'edit'
+        {showReview ? <ReviewView /> : active?.media ? <MediaPreview key={active.media.url} file={active} /> : active && isNotebook && mdMode !== 'edit' ? <NotebookEditor key={project.root + ':' + active.path} file={active} /> : active ? (isMd && mdMode !== 'edit'
           ? <div className={`md-split ${mdMode}`}>{mdMode === 'split' && <div className="md-source"><CodeEditor /></div>}{/\.(html?|svg)$/i.test(active.path) ? <HtmlPreview path={active.path} content={active.content} /> : <article className="md-preview"><Markdown text={active.content} className="doc" /></article>}</div>
           : <CodeEditor />) : <EmptyEditor />}
       </Suspense>
@@ -126,7 +140,7 @@ function HtmlPreview({ path, content }: { path: string; content: string }) {
   return <div className="html-preview-wrap">
     <iframe className="html-preview" title={`Preview of ${path}`} sandbox="allow-scripts allow-forms allow-modals" srcDoc={doc} />
     {native && !/\.svg$/i.test(path) && <button className="btn sm html-pick" title="Open in Shark's browser to pick elements and see console errors"
-      onClick={() => useSettings.getState().set({ sidebarOpen: true, sidebarView: 'browser', browserUrl: path })}><Crosshair size={12} />Pick elements</button>}
+      onClick={() => openWorkbenchBrowser(path)}><Crosshair size={12} />Pick elements</button>}
   </div>;
 }
 

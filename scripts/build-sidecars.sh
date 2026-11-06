@@ -34,12 +34,16 @@ uv run --project backend --with pyinstaller==6.22.3 pyinstaller --noconfirm --on
   --distpath "$BUILD/dist" --workpath "$BUILD/work" --specpath "$BUILD" \
   --paths backend "${GRAMMAR_ARGS[@]}" "${INTEL_ARGS[@]}" --collect-all playwright \
   --collect-all google.adk --collect-all google.genai --collect-all litellm \
+  --collect-all nbformat --collect-all jupyter_client --collect-all ipykernel --collect-all IPython \
+  --collect-all debugpy --collect-all jedi --collect-all parso \
+  --collect-all jupyter_core --collect-all zmq --copy-metadata ipykernel --copy-metadata ipython \
   --collect-submodules mcp.server --collect-submodules mcp.shared --collect-submodules mcp.types --collect-data mcp --exclude-module mcp.cli \
   --collect-submodules shark_runtime --collect-data graphify --copy-metadata graphifyy \
   --hidden-import tiktoken_ext.openai_public --hidden-import tiktoken_ext \
   backend/shark_runtime/frozen.py
 uv run --project backend --no-sync --with pyinstaller==6.22.3 python scripts/verify-bundled-code.py "$BUILD/dist/shark-runtime$EXT"
 env -u PLAYWRIGHT_BROWSERS_PATH "$BUILD/dist/shark-runtime$EXT" --core-self-check --require-browser
+python3 scripts/verify-notebook-runtime.py "$BUILD/dist/shark-runtime$EXT" "src-tauri/binaries/shark-backend-$TRIPLE$EXT"
 cp "$BUILD/dist/shark-runtime$EXT" "src-tauri/binaries/shark-runtime-$TRIPLE$EXT"
 echo "Sidecars ready for $TRIPLE:"
 ls -lh src-tauri/binaries

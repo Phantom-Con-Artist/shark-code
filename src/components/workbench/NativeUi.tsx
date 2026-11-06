@@ -13,6 +13,8 @@ export function Tooltips() {
       if (el === current) return;
       hide();
       if (!el) return;
+      // An iframe's title names its document for assistive technology.
+      if (el.tagName === 'IFRAME') return;
       const title = el.getAttribute('title');
       if (title) { el.setAttribute('data-tip', title); el.removeAttribute('title'); }
       const text = el.getAttribute('data-tip');

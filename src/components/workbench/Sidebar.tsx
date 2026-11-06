@@ -14,6 +14,7 @@ import { detectTasks, type TaskGroup, type WorkspaceTask } from './tasks';
 import { askAgent } from './BottomPanel';
 import { parseGoal } from './AgentPanel';
 import { ComponentList } from '../automata/ComponentList';
+import { confirmAction } from '../../stores/useDialogs';
 
 const TITLES: Record<string, string> = { components: 'Components', sessions: 'Shark sessions', files: 'Explorer', search: 'Search', scm: 'Source control', run: 'Run & Build', browser: 'Browser', plugins: 'Plugins' };
 
@@ -59,7 +60,7 @@ function Sessions() {
             <span className="text"><span className="ellipsis">{title}</span><small>{STATUS[t.status]}{t.engine ? ` · ${PROVIDERS[t.engine as ProviderId]?.label ?? t.engine}` : ''}{t.mode && t.mode !== 'builder' ? ` · ${MODES.find(m => m.id === t.mode)?.label ?? t.mode}` : ''}{t.group ? ' · parallel' : ''} · {relativeTime(t.created_at)}</small></span>
           </button>
           <button className="icon-btn sm del" aria-label={`Delete session: ${title || 'Untitled'}`} title="Delete session" disabled={t.status === 'running'}
-            onClick={e => { e.stopPropagation(); if (window.confirm(`Delete this session? “${title.slice(0, 80)}”\nThis removes its history. It can't be undone.`)) void agent.remove(t.id); }}>
+            onClick={async e => { e.stopPropagation(); if (await confirmAction({title: 'Delete session?', message: `“${title.slice(0, 80)}” and its conversation history will be permanently removed.`, confirmLabel: 'Delete session', danger: true})) void agent.remove(t.id); }}>
             <Trash2 size={13} />
           </button>
         </div>; })}
@@ -95,7 +96,7 @@ function DevTools() {
       </div>))}
       {missing.map(t => <div key={t.id} className="task-row tool-missing" title={t.purpose}>
         <span className="task-run"><span className="name">{t.label}</span><span className="cmd">{t.purpose}</span></span>
-        <button className="icon-btn sm" title={`Install: ${t.install}`} aria-label={`Install ${t.label}`} onClick={() => { if (window.confirm(`Run in the terminal?\n\n${t.install}`)) void runTask({ command: t.install }); }}><Plus size={12} /></button>
+        <button className="icon-btn sm" title={`Install: ${t.install}`} aria-label={`Install ${t.label}`} onClick={async () => { if (await confirmAction({title: `Install ${t.label}?`, message: `Run this command in the terminal:\n\n${t.install}`, confirmLabel: 'Run command'})) void runTask({ command: t.install }); }}><Plus size={12} /></button>
       </div>)}
     </>}
   </section>;

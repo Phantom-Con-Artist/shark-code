@@ -10,6 +10,11 @@ import os
 def run():
     if getattr(sys, "frozen", False):
         os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", "0")
+    if len(sys.argv) > 1 and sys.argv[1] == "--kernel":
+        from ipykernel.kernelapp import IPKernelApp
+        sys.argv = [sys.argv[0], *sys.argv[2:]]
+        IPKernelApp.launch_instance()
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "--core-self-check":
         from shark_runtime.selfcheck import main
         sys.argv = [sys.argv[0], *sys.argv[2:]]

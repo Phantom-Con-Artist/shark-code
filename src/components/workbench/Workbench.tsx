@@ -19,6 +19,8 @@ import { ProfileMenu } from './Profiles';
 import { PluginIcon, usePlugins } from './plugins';
 import { detectTasks, defaultTask } from './tasks';
 import { languageOf, Popover, Splitter } from './primitives';
+import { openWorkbenchBrowser, toggleWorkbenchBrowser } from '../../lib/workbenchBrowser';
+import { promptValue, useDialogs } from '../../stores/useDialogs';
 
 type View = Settings['sidebarView'];
 
@@ -44,6 +46,7 @@ export function Workbench() {
   const profile = profiles.profiles.find(p => p.id === profiles.active) ?? profiles.profiles[0];
 
   useEffect(() => { void useProjectStore.getState().initialize(); }, []);
+  useEffect(() => {if (s.sidebarView === 'browser') openWorkbenchBrowser();}, [s.sidebarView]);
   useEffect(() => { if (native) void useAgentWorkspace.getState().connect(); }, [project.root, native]);
   useEffect(() => {
     if (!native || !agent.connected) return;
@@ -83,6 +86,7 @@ export function Workbench() {
   }, [s.theme, s.fontSize, s.density, s.readingFont, s.highContrast, s.reduceMotion]);
 
   const showView = (view: View) => {
+    if (view === 'browser') { toggleWorkbenchBrowser(); return; }
     const st = useSettings.getState();
     if (st.sidebarOpen && st.sidebarView === view) st.set({ sidebarOpen: false });
     else st.set({ sidebarOpen: true, sidebarView: view });
@@ -106,6 +110,7 @@ export function Workbench() {
     { label: 'File', items: [
       { label: 'New Chat', keys: `${mod} N`, run: newChat },
       { label: 'New File…', run: () => { s.set({ sidebarOpen: true, sidebarView: 'files' }); setTimeout(() => document.querySelector<HTMLButtonElement>('[aria-label="New file"]')?.click()); } },
+      { label: 'New Notebook…', run: () => { void promptValue({title: 'New notebook', message: 'Create a Jupyter notebook inside this project.', confirmLabel: 'Create notebook', input: {label: 'Notebook path', value: 'notebooks/analysis.ipynb'}}).then(path => {if (path) {void project.createFile(path.endsWith('.ipynb') ? path : path + '.ipynb'); ui.set({editorView: 'file', mdMode: 'preview'}); s.set({view: 'code', editorOpen: true});}}); } },
       { label: 'Open Folder…', run: () => { s.set({ sidebarOpen: true, sidebarView: 'files' }); void project.pickFolder(); } },
       { label: 'Go to File…', keys: `${mod} P`, run: () => ui.open('files') }, 'separator',
       { label: 'Save', keys: `${mod} S`, run: () => { if (project.activePath) void project.save(project.activePath); }, disabled: !project.activePath },
@@ -183,6 +188,7 @@ export function Workbench() {
 
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if (useDialogs.getState().active) return;
       const st = useSettings.getState(), u = useUi.getState();
       const handled = () => { e.preventDefault(); e.stopPropagation(); };
       if (e.altKey && !e.ctrlKey && !e.metaKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !(e.target as HTMLElement).closest('.monaco-editor, textarea, input')) { handled(); void useProjectStore.getState().navigate(e.key === 'ArrowLeft' ? -1 : 1); return; }
@@ -223,6 +229,7 @@ export function Workbench() {
   const errors = ui.problems.filter(p => p.severity === 'error').length, warnings = ui.problems.length - errors;
   const status = !native ? { tone: '', label: 'Browser preview' } : agent.connected ? { tone: 'ok', label: 'Backend connected' } : agent.error ? { tone: 'err', label: 'Backend offline' } : { tone: 'warn', label: 'Connecting…' };
   const running = agent.tasks.some(t => t.status === 'running');
+  const browserWide = s.view === 'code' && ui.editorView === 'browser' && ui.browserWide;
 
   const railItem = (view: View, label: string, Icon: typeof Files, badge?: number) =>
     <button key={view} className={`rail-btn ${s.sidebarOpen && s.sidebarView === view ? 'active' : ''}`} aria-label={label} title={label} aria-pressed={s.sidebarOpen && s.sidebarView === view} onClick={() => showView(view)}>
@@ -245,7 +252,7 @@ export function Workbench() {
         {railItem('search', 'Search', Search)}
         {railItem('scm', 'Source control', GitBranch)}
         {railItem('run', 'Run & Build', Play)}
-        {railItem('browser', 'Browser', Globe)}
+        <button className={`rail-btn ${ui.editorView === 'browser' ? 'active' : ''}`} aria-label="Browser" title="Workbench browser" aria-pressed={ui.editorView === 'browser'} onClick={toggleWorkbenchBrowser}><Globe size={20} strokeWidth={1.6} /></button>
         {plugins.enabled.length > 0 && <span className="rail-sep" />}
         {plugins.enabled.map(p => <button key={p.id} className={`rail-btn ${s.sidebarOpen && s.sidebarView === `plugin:${p.id}` ? 'active' : ''}`} aria-label={p.name} title={p.name} onClick={() => showView(`plugin:${p.id}`)}><PluginIcon name={p.icon} /></button>)}
         {railItem('plugins', 'Plugins', Puzzle)}
@@ -259,7 +266,7 @@ export function Workbench() {
         </div>
         <button className="rail-btn" aria-label="Settings" title={`Settings · ${mod} ,`} onClick={() => ui.open('settings')}><Settings2 size={19} strokeWidth={1.6} /></button>
       </nav>
-      {s.sidebarOpen && <>
+      {s.sidebarOpen && !browserWide && <>
         <Sidebar />
         <Splitter axis="x" label="Resize sidebar" value={s.sidebarWidth} min={200} max={Math.min(560, sideMax)} onChange={v => s.set({ sidebarWidth: v })} onReset={() => s.set({ sidebarWidth: LAYOUT_DEFAULTS.sidebarWidth })} />
       </>}
@@ -275,13 +282,13 @@ export function Workbench() {
                 <div className="pane pane-shark"><AgentPanel /></div>
               </>}
             </div>
-        : s.view === 'code'
+          : s.view === 'code'
           ? <div className="wb-row view-code">
               <div className="code-col">
                 {!panelMax && <div className="pane pane-editor grow-pane"><EditorArea /></div>}
                 {bottomPanel}
               </div>
-              {s.editorOpen && <>
+              {s.editorOpen && !browserWide && <>
                 <Splitter axis="x" invert label="Resize Shark panel" value={s.agentWidth} min={340} max={Math.max(340, viewport.w - rail - 420 - (s.sidebarOpen ? s.sidebarWidth : 0))} onChange={v => s.set({ agentWidth: v })} onReset={() => s.set({ agentWidth: 420 })} />
                 <div className="pane pane-shark"><AgentPanel /></div>
               </>}

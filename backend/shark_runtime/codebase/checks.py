@@ -105,7 +105,7 @@ def security(path: str, text: str) -> list[dict[str, Any]]:
                 'high',
             )
 
-    extension = PurePosixPath(path).suffix
+    extension = '.py' if path.lower().endswith('.ipynb') else PurePosixPath(path).suffix
     for rule, languages, pattern, message in REVIEW_PATTERNS:
         if extension in languages:
             for match in re.finditer(pattern, text):

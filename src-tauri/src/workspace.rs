@@ -10,7 +10,7 @@ use std::{
         atomic::{AtomicU64, Ordering},
     },
 };
-use tauri::{State, ipc::Channel};
+use tauri::{Manager, State, ipc::Channel};
 
 #[derive(Clone, Default)]
 pub struct Workspace(pub Arc<Mutex<Option<PathBuf>>>);
@@ -130,6 +130,132 @@ pub fn workspace_read(path: String, state: State<'_, Workspace>) -> Result<Strin
         return Err("This editor supports text files up to 2 MB".into());
     }
     fs::read_to_string(target).map_err(|e| e.to_string())
+}
+#[derive(Serialize)]
+pub struct MediaFile {
+    path: String,
+    size: u64,
+}
+#[tauri::command]
+pub fn workspace_mutate(
+    operation: String,
+    path: String,
+    to: Option<String>,
+    expected_root: String,
+    state: State<'_, Workspace>,
+) -> Result<(), String> {
+    let base = root(&state)?;
+    if base.to_string_lossy() != expected_root {
+        return Err("Workspace changed; retry in the current project".into());
+    }
+    mutate_path(&base, &operation, &path, to.as_deref())
+}
+fn mutate_path(base: &Path, operation: &str, path: &str, to: Option<&str>) -> Result<(), String> {
+    let checked = |value: &str| -> Result<PathBuf, String> {
+        if value
+            .split('/')
+            .any(|part| matches!(part, ".git" | ".shark"))
+        {
+            return Err("Project metadata is protected".into());
+        }
+        relative_path(base, value)
+    };
+    let target = checked(path)?;
+    match operation {
+        "mkdir" => {
+            if target.try_exists().map_err(|e| e.to_string())? {
+                return Err("That path already exists".into());
+            }
+            fs::create_dir_all(target).map_err(|e| e.to_string())
+        }
+        "rename" => {
+            let destination = checked(to.ok_or("Provide a new path")?)?;
+            if fs::symlink_metadata(&destination).is_ok() {
+                return Err("That path already exists".into());
+            }
+            fs::rename(target, destination).map_err(|e| e.to_string())
+        }
+        "copy" => {
+            let destination = checked(to.ok_or("Provide a destination path")?)?;
+            if fs::symlink_metadata(&destination).is_ok() {
+                return Err("That path already exists".into());
+            }
+            if destination.starts_with(&target) {
+                return Err("Cannot copy a folder inside itself".into());
+            }
+            fn copy_tree(
+                source: &Path,
+                destination: &Path,
+                count: &mut usize,
+            ) -> Result<(), String> {
+                *count += 1;
+                if *count > 20000 {
+                    return Err("Copy is limited to 20,000 entries".into());
+                }
+                let metadata = fs::symlink_metadata(source).map_err(|e| e.to_string())?;
+                if metadata.file_type().is_symlink() {
+                    return Err("Copying symbolic links is not supported".into());
+                }
+                if metadata.is_dir() {
+                    fs::create_dir(destination).map_err(|e| e.to_string())?;
+                    for entry in fs::read_dir(source).map_err(|e| e.to_string())? {
+                        let entry = entry.map_err(|e| e.to_string())?;
+                        if matches!(entry.file_name().to_str(), Some(".git" | ".shark")) {
+                            continue;
+                        }
+                        copy_tree(&entry.path(), &destination.join(entry.file_name()), count)?;
+                    }
+                    Ok(())
+                } else if metadata.is_file() {
+                    fs::copy(source, destination)
+                        .map(|_| ())
+                        .map_err(|e| e.to_string())
+                } else {
+                    Err("Copy supports regular files and folders".into())
+                }
+            }
+            let result = copy_tree(&target, &destination, &mut 0);
+            if result.is_err() {
+                if destination.is_dir() {
+                    let _ = fs::remove_dir_all(&destination);
+                } else {
+                    let _ = fs::remove_file(&destination);
+                }
+            }
+            result
+        }
+        "trash" => trash::delete(target).map_err(|e| e.to_string()),
+        _ => Err("Choose mkdir, rename, copy or trash".into()),
+    }
+}
+#[tauri::command]
+pub fn workspace_media(
+    path: String,
+    expected_root: String,
+    state: State<'_, Workspace>,
+    app: tauri::AppHandle,
+) -> Result<MediaFile, String> {
+    let base = root(&state)?;
+    if base.to_string_lossy() != expected_root {
+        return Err("Workspace changed; reopen the media file".into());
+    }
+    let target = relative_path(&base, &path)?
+        .canonicalize()
+        .map_err(|e| e.to_string())?;
+    if !target.starts_with(&base) {
+        return Err("Path leaves the selected workspace".into());
+    }
+    let metadata = fs::metadata(&target).map_err(|e| e.to_string())?;
+    if !metadata.is_file() {
+        return Err("Choose a media file".into());
+    }
+    app.asset_protocol_scope()
+        .allow_file(&target)
+        .map_err(|e| e.to_string())?;
+    Ok(MediaFile {
+        path: target.to_string_lossy().into(),
+        size: metadata.len(),
+    })
 }
 #[tauri::command]
 pub fn workspace_refresh(
@@ -332,6 +458,26 @@ mod tests {
         assert!(relative_path(&base, "/etc/passwd").is_err());
         assert!(relative_path(&base, "").is_err());
         assert!(relative_path(&base, "shark-project/new.txt").is_ok());
+    }
+    #[test]
+    fn explorer_mutations_preserve_files_and_refuse_unsafe_destinations() {
+        let directory = tempfile::TempDir::new().unwrap();
+        let base = directory.path().canonicalize().unwrap();
+        mutate_path(&base, "mkdir", "folder", None).unwrap();
+        fs::write(base.join("folder/image.png"), [0, 255, 17, 42]).unwrap();
+        mutate_path(&base, "copy", "folder", Some("duplicate")).unwrap();
+        assert_eq!(
+            fs::read(base.join("duplicate/image.png")).unwrap(),
+            [0, 255, 17, 42]
+        );
+        assert!(mutate_path(&base, "copy", "folder", Some("folder/nested")).is_err());
+        assert!(mutate_path(&base, "rename", "folder", Some("duplicate")).is_err());
+        mutate_path(&base, "rename", "folder", Some("renamed")).unwrap();
+        assert!(base.join("renamed/image.png").is_file());
+        assert!(!base.join("folder").exists());
+        assert!(mutate_path(&base, "mkdir", "../escape", None).is_err());
+        assert!(mutate_path(&base, "mkdir", ".git/objects", None).is_err());
+        assert!(mutate_path(&base, "trash", ".shark", None).is_err());
     }
     #[cfg(unix)]
     #[test]

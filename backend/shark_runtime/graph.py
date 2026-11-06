@@ -15,7 +15,7 @@ from pathlib import Path
 from .core import Core, Fault, confined, write_json
 
 CODE = {".py", ".pyi", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".rs", ".go", ".java", ".c", ".h", ".cpp", ".hpp", ".cs", ".rb", ".php", ".kt", ".swift", ".scala"}
-WEB_ASSETS = {".html", ".htm", ".css"}
+WEB_ASSETS = {".html", ".htm", ".css", ".ipynb"}
 CONFIG = {"package.json", "tsconfig.json", "jsconfig.json", "Cargo.toml", "go.mod", "pyproject.toml"}
 # Structural containment is useful for navigation, but must never turn a single
 # changed symbol into an assertion that every symbol in its file is affected.
@@ -57,7 +57,7 @@ class Graph:
         selected = [f for f in snapshot["files"] if Path(f["path"]).suffix in (CODE | WEB_ASSETS) or Path(f["path"]).name in CONFIG]
         if len(selected) > 5000:
             raise Fault("graph_too_large", "Choose a workspace with at most 5,000 graph input files")
-        signature = json.dumps(["shark-graph-v1", self.version, selected, snapshot["skipped"]], sort_keys=True).encode()
+        signature = json.dumps(["shark-graph-v2-notebooks", self.version, selected, snapshot["skipped"]], sort_keys=True).encode()
         return {"revision": hashlib.sha256(signature).hexdigest(), "files": selected,
                 "skipped": snapshot["skipped"], "unindexed_files": len(snapshot["files"]) - len(selected)}
 
@@ -167,6 +167,15 @@ class Graph:
                 src_id = file_node_by_path.get(p)
                 if not src_id:
                     continue
+                if p.lower().endswith('.ipynb'):
+                    for symbol in parsed.get('symbols', []):
+                        nid = 'notebook:' + symbol['id']
+                        nodes.append({'id': nid, 'label': symbol['qualified_name'], 'kind': symbol['kind'], 'path': p,
+                                      'location': f"cell {symbol.get('cell_index', 0) + 1}:L{symbol.get('cell_line', 1)}",
+                                      'cell_id': symbol.get('cell_id'), 'cell_line': symbol.get('cell_line'),
+                                      'version': manifest[p]['version'], 'artifact_id': manifest[p]['artifact_id'], 'external': False})
+                        ids.add(nid)
+                        edges.append({'source': src_id, 'target': nid, 'relation': 'contains', 'confidence': 'EXTRACTED', 'evidence': p})
                 for imp in parsed.get("imports", []):
                     resolved_target = cb_engine.resolve_import(p, imp, all_paths, aliases)
                     dst_id = file_node_by_path.get(resolved_target) if resolved_target else None

@@ -61,6 +61,25 @@ def shark_project(operation: str, parameters_json: str = "{}") -> str:
 
 
 @server.tool()
+def shark_notebook(operation: str, parameters_json: str = "{}") -> str:
+    """Native Jupyter notebooks. Operations: read(path), kernels(), create(path, operations),
+    edit(path, expected_version, operations), execute(path, notebook?, cell_ids?, kernel?, timeout?),
+    execution(id), interrupt(path), restart(path), shutdown(path).
+    Cell edits: add(index, cell_type, source), update(cell_id, source), delete(cell_id),
+    move(cell_id, index), clear_outputs(cell_id?). Read returns cell IDs and the current version.
+    Create/edit return full content and versioned changes without writing; write the returned content
+    with normal file tools in your private workspace. Execute only when requested; poll execution for
+    outputs. Kernels retain state between cells. Save outputs with file tools if requested.
+    Code intelligence includes notebook symbols, imports, calls, quality and security with cell references.
+    """
+    from .notebooks import METHODS
+    if operation not in METHODS: raise ValueError('Unknown notebook operation')
+    params = json.loads(parameters_json)
+    if not isinstance(params, dict): raise ValueError('parameters_json must be a JSON object')
+    return json.dumps(call('notebook/' + operation, params), ensure_ascii=False)
+
+
+@server.tool()
 def shark_automata(operation: str, parameters_json: str = "{}") -> str:
     """Shark Automata (visual workflows). Operations: catalog (components, templates, plus the file format; call this first),
     templates, list, get(id), validate(id), codegen(id), test_component(id), test_node(id, node_id, input), dry_run(id).

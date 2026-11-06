@@ -11,7 +11,7 @@ from .codebase import Codebase
 from .codebase.gateway import OPERATIONS, dispatch as intelligence_dispatch
 
 # Bump when the app depends on new runtime methods or parameters; the UI offers a restart if older.
-RUNTIME_VERSION = 8
+RUNTIME_VERSION = 9
 CORE_TOOLS = {"workspace/list", "workspace/snapshot", "file/read", "code/search", "code/outline",
     "artifact/read", "cache/stats", "changes/preview", "changes/apply", "changes/revert",
     "changes/pending", "changes/recover", "changes/inspect"}
@@ -23,6 +23,8 @@ APP_TOOLS = {"workspace/context", "graph/index", "graph/query", "graph/impact", 
 
 
 APP_TOOLS |= {"intelligence/" + operation for operation in OPERATIONS}
+from .notebooks import METHODS as NOTEBOOK_METHODS
+APP_TOOLS |= {"notebook/" + operation for operation in NOTEBOOK_METHODS}
 APP_TOOLS |= {"workflow/" + operation for operation in ("create", "get", "step", "start", "resume", "pause", "cancel", "respond", "replan", "ask")}
 
 
@@ -54,8 +56,18 @@ class Service:
         self.orchestrator = None
         self.human_request = None
         self.git_disabled = False
+        self._notebooks = None
+        self.notebook_execution_allowed = True
 
     def execute(self, method: str, p: dict):
+        if method.startswith("notebook/"):
+            with self.workflow_lock:
+                if self._notebooks is None:
+                    from .notebooks import Notebooks
+                    self._notebooks = Notebooks(self)
+            if method == 'notebook/execute' and not self.notebook_execution_allowed:
+                raise Fault('read_only', 'Notebook execution is unavailable in read-only mode')
+            return self._notebooks.dispatch(method.split('/', 1)[1], p)
         if method == "capabilities":
             result = self.core.call(method)
             result["tools"] = sorted(CORE_TOOLS | APP_TOOLS)
@@ -72,6 +84,19 @@ class Service:
             return self.automata_method(method.split("/", 1)[1], p)
         if method.startswith("intelligence/"):
             return intelligence_dispatch(self.intelligence, method, p)
+        if method == 'code/outline' and isinstance(p.get('path'), str) and p['path'].lower().endswith('.ipynb'):
+            self.fields(p, {'path'})
+            with self.intelligence.lock:
+                self.intelligence.ensure()
+                record = self.intelligence.records.get(p['path'])
+                if record is None: raise Fault('not_found', 'Notebook was not indexed')
+                entry = next(f for f in self.intelligence.manifest if f['path'] == p['path'])
+                return {'path': p['path'], 'version': entry['version'], 'artifact_id': entry['artifact_id'],
+                        'language': record['language'], 'syntax_errors': bool(record['syntax_errors']),
+                        'truncated': record['truncated'], 'cache_hit': False, 'imports': record['imports'],
+                        'line_kind': 'notebook_projected_source', 'cells': record.get('notebook_cells', []),
+                        'symbols': [{**s, 'start_line': s['line'], 'calls': [c for c in record['calls'] if s['line'] <= c['line'] <= s['end_line']],
+                                     'calls_truncated': False} for s in record['symbols']]}
         if method in CORE_TOOLS:
             return self.core.call(method, p)
         if method == "graph/index":
@@ -380,6 +405,8 @@ class Service:
         raise Fault("unknown_method", method)
 
     def close(self):
+        if self._notebooks is not None:
+            self._notebooks.close()
         if self._automata is not None:
             self._automata.close()
         if self.orchestrator is not None:

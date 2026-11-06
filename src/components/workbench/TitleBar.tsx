@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
-import { ArrowLeft, ArrowRight, Code2, Workflow, Copy, Minus, PanelBottom, PanelLeft, PanelRight, Search, Square, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Code2, Workflow, Copy, Globe, Menu as MenuIcon, Minus, PanelBottom, PanelLeft, PanelRight, Search, Square, X } from 'lucide-react';
+import { toggleWorkbenchBrowser } from '../../lib/workbenchBrowser';
+import { confirmAction } from '../../stores/useDialogs';
 import { useProjectStore } from '../../stores/useProjectStore';
 import { useSettings } from '../../stores/useSettings';
 import { useUi } from '../../stores/useUi';
@@ -32,7 +34,10 @@ function MenuBar({ menus }: { menus: Menu[] }) {
   }, [open, menus.length]);
 
   return <div className="menubar" ref={ref} role="menubar">
-    {menus.map((menu, i) => <div key={menu.label} className="menu-root">
+    <div className="menubar-compact menu-root"><button role="menuitem" aria-label="Application menu" aria-haspopup="menu" aria-expanded={open === -1} onClick={() => setOpen(open === -1 ? null : -1)}><MenuIcon size={15} /><span>Menu</span></button>
+      {open === -1 && <div className="menu-dropdown compact-menu" role="menu">{menus.map(menu => <div key={menu.label} role="group" aria-label={menu.label}><div className="group label">{menu.label}</div>{menu.items.map((item, k) => item === 'separator' ? <hr key={k} /> : <button key={item.label} role="menuitem" disabled={item.disabled} onClick={() => {setOpen(null); item.run();}}><span>{item.label}</span>{item.keys && <kbd>{item.keys}</kbd>}</button>)}</div>)}</div>}
+    </div>
+    {menus.map((menu, i) => <div key={menu.label} className="menu-root menubar-full">
       <button role="menuitem" aria-haspopup="menu" aria-expanded={open === i} className={open === i ? 'open' : ''}
         onClick={() => setOpen(open === i ? null : i)} onPointerEnter={() => { if (open !== null) setOpen(i); }}>{menu.label}</button>
       {open === i && <div className="menu-dropdown" role="menu">
@@ -55,9 +60,21 @@ export function TitleBar({ menus }: { menus: Menu[] }) {
 
   useEffect(() => {
     if (!native) return;
-    let unlisten: (() => void) | undefined;
-    void win().then(async w => { setMaximized(await w.isMaximized()); unlisten = await w.onResized(async () => setMaximized(await w.isMaximized())); });
-    return () => unlisten?.();
+    let unlisten: (() => void) | undefined, unlistenClose: (() => void) | undefined;
+    let disposed = false, checkingClose = false, allowClose = false;
+    void win().then(async w => {
+      setMaximized(await w.isMaximized());
+      unlisten = await w.onResized(async () => setMaximized(await w.isMaximized()));
+      unlistenClose = await w.onCloseRequested(event => {
+        if (allowClose || !useProjectStore.getState().tabs.some(t => t.content !== t.saved)) return;
+        event.preventDefault();
+        if (checkingClose) return;
+        checkingClose = true;
+        void confirmAction({title: 'Close Shark Code?', message: 'Some files have unsaved changes. Save them before closing, or discard the edits.', confirmLabel: 'Discard and close', danger: true}).then(confirmed => {checkingClose = false; if (confirmed && !disposed) {allowClose = true; void w.close();}});
+      });
+      if (disposed) {unlisten?.(); unlistenClose?.();}
+    });
+    return () => {disposed = true; unlisten?.(); unlistenClose?.();};
   }, [native]);
 
   return <header className="titlebar" data-tauri-drag-region>
@@ -77,6 +94,7 @@ export function TitleBar({ menus }: { menus: Menu[] }) {
         <button aria-pressed={s.view === 'automata'} title="Automata: visual workflows built with Shark" onClick={() => s.set({ view: 'automata', editorOpen: true })}><Workflow size={13} />Automata</button>
       </div>
       <button className="icon-btn" aria-pressed={s.sidebarOpen} aria-label="Toggle sidebar" title={`Sidebar · ${mod} B`} onClick={() => s.toggle('sidebarOpen')}><PanelLeft size={15} /></button>
+      <button className="icon-btn" aria-pressed={ui.editorView === 'browser'} aria-label="Toggle workbench browser" title="Toggle workbench browser" onClick={toggleWorkbenchBrowser}><Globe size={15} /></button>
       <button className="icon-btn" aria-pressed={s.terminalOpen} aria-label="Toggle panel" title={`Panel · ${mod} J`} onClick={() => s.toggle('terminalOpen')}><PanelBottom size={15} /></button>
       <button className="icon-btn" aria-pressed={s.editorOpen} aria-label={s.view !== 'shark' ? 'Toggle Shark panel' : 'Toggle editor pane'} title={`${s.view !== 'shark' ? 'Shark panel' : 'Editor'} · ${mod} \\`} onClick={() => s.toggle('editorOpen')}><PanelRight size={15} /></button>
       {native && <div className="window-controls">

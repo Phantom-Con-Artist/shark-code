@@ -54,7 +54,7 @@ DECISIONS = {'if_statement', 'if_expression', 'for_statement', 'for_expression',
 NESTING = DECISIONS - {'conditional_expression', 'ternary_expression', 'match_arm'}
 COGNITIVE_FLOW_BREAKS = {'else_clause', 'elif_clause', 'except_clause', 'catch_clause', 'continue_statement', 'break_statement', 'goto_statement'}
 COMMENT_TYPES = {'comment', 'line_comment', 'block_comment'}
-CODE_EXTENSIONS = set(LANGUAGES) | {'.vue', '.svelte', '.swift', '.sql'}
+CODE_EXTENSIONS = set(LANGUAGES) | {'.vue', '.svelte', '.swift', '.sql', '.ipynb'}
 ENV_PATTERNS = [r'process\.env\.([A-Za-z_]\w*)', r'process\.env\[[\'\"]([A-Za-z_]\w*)[\'\"]\]',
                 r'(?:os\.getenv|os\.environ\.get|env::var|std::env::var|os\.Getenv)\s*\(\s*[\'\"]([^\'\"]+)',
                 r'os\.environ\s*\[\s*[\'\"]([^\'\"]+)']
@@ -228,6 +228,26 @@ def _extract_sql(path: str, text: str) -> dict:
 
 
 def parse(path: str, text: str) -> dict:
+    if path.lower().endswith('.ipynb'):
+        from .notebook_source import project, locate
+        try:
+            source, cells, language, limitations = project(text)
+            result = parse(path + ('.py' if language.lower() in {'python', 'python3'} else '.txt'), source)
+            def remap(value):
+                if isinstance(value, dict):
+                    if value.get('path') == path + '.py' or value.get('path') == path + '.txt': value['path'] = path
+                    if type(value.get('line')) is int: value.update(locate(cells, value['line']))
+                    for child in value.values(): remap(child)
+                elif isinstance(value, list):
+                    for child in value: remap(child)
+            remap(result)
+            result.update(path=path, notebook_cells=cells, notebook_limitations=limitations, analysis_source=source,
+                          bytes=len(text.encode()), sha256=hashlib.sha256(text.encode()).hexdigest()[:24])
+            return result
+        except (ValueError, TypeError, KeyError, AttributeError) as exc:
+            result = parse(path + '.txt', '')
+            result.update(path=path, syntax_errors=[{'line': 1, 'kind': 'invalid_notebook', 'message': str(exc)[:150]}])
+            return result
     suffix = PurePosixPath(path).suffix.lower()
     spec = LANGUAGES.get(suffix)
     result = {'path': path, 'language': spec[0] if spec else suffix.lstrip('.') or 'text',

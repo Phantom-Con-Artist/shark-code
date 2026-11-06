@@ -1,3 +1,4 @@
+import { confirmAction } from '../../stores/useDialogs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, BarChart3, Bell, Book, Bookmark, Bot, Boxes, Brain, Bug, Calendar, CheckSquare, ClipboardList, Clock, Cloud, Code2, Compass, Cpu, Database, FileText, Flag, Gauge, GitBranch, Globe, Hammer, Heart, Image, Inbox, Key, Layers, Layout, Lightbulb, ListTodo, Lock, Map, MessageCircle, Monitor, Network, Notebook, Package, Palette, PenTool, Puzzle, Rocket, Search, Server, Settings, Shield, Sparkles, Star, Table, Tag, Target, Terminal, TestTube2, Timer, Wand2, Workflow, Wrench, Zap } from 'lucide-react';
 
@@ -69,7 +70,7 @@ export function PluginView({ plugin }: { plugin: Plugin }) {
         else if (method === 'agent.ask') { need('agent.ask'); askAgent(String(params.text).slice(0, 8000)); reply({ result: true }); }
         else if (method === 'terminal.run') {
           need('terminal.run');
-          if (!window.confirm(`${plugin.name} wants to run:\n\n${params.command}\n\nAllow?`)) throw new Error('The person declined');
+          if (!await confirmAction({title: `${plugin.name}: run command?`, message: String(params.command), confirmLabel: 'Run command'})) throw new Error('The person declined');
           const { runTask } = await import('./Sidebar'); await runTask({ command: String(params.command) }); reply({ result: true });
         }
         else if (method === 'context.get') reply({ result: { activePath: project.activePath, theme: useUi.getState().resolvedTheme, project: project.name } });

@@ -257,7 +257,26 @@ class AgentHost:
             """
             return await invoke("workflow/ask", {"question": question})
 
-        tools = [project_intelligence, automata, static_tools, analyze_code, explore, read_file, search_code, assess_impact, outline, check_page]
+        async def notebook(operation: str, parameters_json: str = "{}") -> dict:
+            """Jupyter notebooks: read(path), kernels(), create(path, operations),
+            edit(path, expected_version, operations), execute(path, notebook?, cell_ids?, kernel?),
+            execution(id), interrupt(path), restart(path), shutdown(path).
+            Cell edits: add(index, cell_type, source), update(cell_id, source), delete(cell_id),
+            move(cell_id, index), clear_outputs(cell_id?). Create/edit return changes for propose_changes;
+            they do not write files. Execution runs local code only when requested and returns a job ID;
+            poll execution for cell outputs, then propose their inclusion in the notebook if requested.
+            """
+            from .notebooks import METHODS
+            if operation not in METHODS or (read_only and operation not in {'read', 'kernels', 'execution'}):
+                return {"error": {"code": "invalid_params", "message": "Choose an allowed notebook operation"}}
+            try:
+                params = json.loads(parameters_json)
+                if not isinstance(params, dict): raise ValueError()
+            except ValueError:
+                return {"error": {"code": "invalid_json", "message": "Expected a JSON object"}}
+            return await invoke('notebook/' + operation, params)
+
+        tools = [project_intelligence, notebook, automata, static_tools, analyze_code, explore, read_file, search_code, assess_impact, outline, check_page]
         if getattr(service, "human_request", None) is not None:
             tools.append(request_human_input)
         return tools if read_only else tools + [propose_changes]

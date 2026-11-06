@@ -1,3 +1,4 @@
+import { confirmAction } from '../../stores/useDialogs';
 import { useCallback, useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, Check, ChevronDown, CloudDownload, GitBranch, GitBranchPlus, GitCommitHorizontal, Minus, Plus, RefreshCw, Sparkles } from 'lucide-react';
 import { Popover } from './primitives';
@@ -31,7 +32,7 @@ export function SourceControl() {
   const act = async (fn: () => Promise<unknown>) => { setBusy(true); try { await fn(); await refresh(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setBusy(false); } };
 
   const sync = async (action: 'fetch' | 'pull' | 'push') => {
-    if (action === 'push' && !window.confirm(`Push ${status?.branch ?? 'this branch'} to its remote?`)) return;
+    if (action === 'push' && !await confirmAction({title: 'Push commits?', message: `Push ${status?.branch ?? 'this branch'} to its remote?`, confirmLabel: 'Push'})) return;
     setSyncing(action); setError('');
     try { await sharkGit.sync(action); await refresh(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); } finally { setSyncing(''); }
   };

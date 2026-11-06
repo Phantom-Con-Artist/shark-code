@@ -1,8 +1,9 @@
 import { create } from 'zustand';
-import { invoke, isTauri } from '@tauri-apps/api/core';
+import { convertFileSrc, invoke, isTauri } from '@tauri-apps/api/core';
+import { mediaKind, releaseMedia, type MediaKind } from '../lib/media';
 
 export type ProjectEntry = { path: string; directory: boolean };
-export type OpenFile = { path: string; content: string; saved: string };
+export type OpenFile = { path: string; content: string; saved: string; media?: { kind: MediaKind; url: string; size: number } };
 export type SearchHit = { path: string; line: number; text: string };
 type DirectoryHandle = { name: string; kind: string; values(): AsyncIterable<DirectoryHandle & { getFile(): Promise<File> }>; getDirectoryHandle(name: string, options?: { create: boolean }): Promise<DirectoryHandle>; getFileHandle(name: string, options?: { create: boolean }): Promise<{ getFile(): Promise<File>; createWritable(): Promise<{ write(content: string): Promise<void>; close(): Promise<void> }> }> };
 const source = import.meta.glob(['/src/**/*.{ts,tsx,css}', '/src-tauri/src/*.rs', '/package.json', '/README.md', '/index.html'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
@@ -37,6 +38,7 @@ async function scanFolder(base: DirectoryHandle, prefix = '', depth = 0): Promis
   return result;
 }
 interface ProjectState {
+  mutatePath(operation: 'mkdir' | 'rename' | 'copy' | 'trash', path: string, to?: string): Promise<void>;
   refreshFromDisk(paths: string[]): Promise<void>;
   name: string; root: string; kind: 'browser' | 'folder' | 'native'; entries: ProjectEntry[]; tabs: OpenFile[]; activePath: string; error: string; notice: string; busy: boolean;
   initialize(): Promise<void>; openFolder(path?: string): Promise<void>; pickFolder(): Promise<void>; openFile(path: string): Promise<void>; edit(path: string, content: string): void; save(path: string): Promise<void>; createFile(path: string): Promise<void>; closeFile(path: string, force?: boolean): void; reloadFile(path: string): Promise<void>; clearError(): void;
@@ -44,6 +46,27 @@ interface ProjectState {
   refresh(): Promise<void>; searchText(query: string): Promise<SearchHit[]>; readText(path: string): Promise<string | null>;
 }
 export const useProjectStore = create<ProjectState>((set, get) => ({
+  mutatePath: async (operation, path, to) => {
+    const {root, kind} = get();
+    set({error: ''});
+    try {
+      cleanPath(path); if (to) cleanPath(to);
+      if (kind !== 'native') throw new Error('Folder creation, rename and trash are available in the desktop workspace.');
+      await invoke('workspace_mutate', {operation, path, to: to ?? null, expectedRoot: root});
+      if (get().root !== root) return;
+      const within = (p: string) => p === path || p.startsWith(path + '/');
+      if (operation === 'rename' && to) {
+        const renamed = (p: string) => within(p) ? to + p.slice(path.length) : p;
+        set(s => ({tabs: s.tabs.map(t => ({...t, path: renamed(t.path)})), activePath: renamed(s.activePath), history: s.history.map(renamed)}));
+        for (const tab of get().tabs.filter(t => t.media && (t.path === to || t.path.startsWith(to + '/')))) await get().reloadFile(tab.path);
+      } else if (operation === 'trash') {
+        get().tabs.filter(t => within(t.path)).forEach(t => get().closeFile(t.path, true));
+        set(s => ({history: s.history.filter(p => !within(p)), historyIndex: -1}));
+      }
+      await get().refresh();
+      set({notice: operation === 'trash' ? 'Moved to Trash' : operation === 'rename' ? 'Renamed' : operation === 'copy' ? 'Copied' : 'Folder created'});
+    } catch (e) { if (get().root === root) set({error: String(e)}); }
+  },
   refreshFromDisk: async paths => {
     if (get().kind !== 'native') return;
     const root = get().root;
@@ -54,6 +77,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       set({ entries: project.entries });
       for (const file of original.filter(f => paths.includes(f.path) && f.content === f.saved)) {
         if (!project.entries.some(e => e.path === file.path && !e.directory)) { get().closeFile(file.path); continue; }
+        if (file.media) { await get().reloadFile(file.path); continue; }
         const content = await invoke<string>('workspace_read', { path: file.path });
         if (get().root !== root) return;
         set(s => ({ tabs: s.tabs.map(t => t.path === file.path && t.content === file.content && t.saved === file.saved ? { ...t, content, saved: content } : t) }));
@@ -82,12 +106,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       if (isTauri()) {
         const project = await invoke<{ name: string; root: string; entries: ProjectEntry[] }>('workspace_open', { path: path || null });
+        get().tabs.forEach(t => releaseMedia(t.media?.url));
         folder = null; set({ ...project, kind: 'native', tabs: [], activePath: '', notice: 'Connected to your local project' });
       } else {
         const picker = (window as unknown as { showDirectoryPicker?: (options: { mode: string }) => Promise<DirectoryHandle> }).showDirectoryPicker;
         if (!picker) throw new Error('Folder access is unavailable in this browser. You can edit and save the browser workspace, or use the desktop app for local files.');
         const selected = await picker({ mode: 'readwrite' });
         const entries = await scanFolder(selected);
+        get().tabs.forEach(t => releaseMedia(t.media?.url));
         folder = selected;
         set({ name: selected.name, root: selected.name, entries, kind: 'folder', tabs: [], activePath: '', notice: 'Folder connected. Save writes to your selected folder.' });
       }
@@ -107,6 +133,23 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     if (get().tabs.some(t => t.path === path)) { set({ activePath: path }); record(); return; }
     set({ error: '' });
     try {
+      const kind = mediaKind(path);
+      if (kind) {
+        const root = get().root;
+        let url: string, size: number;
+        if (get().kind === 'native') {
+          const file = await invoke<{path: string; size: number}>('workspace_media', {path, expectedRoot: root});
+          url = convertFileSrc(file.path); size = file.size;
+        } else if (get().kind === 'folder') {
+          const file = await (await diskHandle(path)).getFile();
+          url = URL.createObjectURL(file); size = file.size;
+        } else throw new Error('Open a local folder to preview media files.');
+        if (get().root !== root) { releaseMedia(url); return; }
+        const existing = get().tabs.find(t => t.path === path);
+        if (existing) { releaseMedia(url); set({activePath: path}); }
+        else set(s => ({ tabs: [...s.tabs, {path, content: '', saved: '', media: {kind, url, size}}], activePath: path }));
+        record(); return;
+      }
       const content = get().kind === 'native' ? await invoke<string>('workspace_read', { path }) : get().kind === 'folder' ? await (await (await diskHandle(path)).getFile()).text() : browserFiles()[path];
       if (content === undefined) throw new Error('File could not be found.');
       if (content.length > 2 * 1024 * 1024 || content.includes('\0')) throw new Error('Open a text file smaller than 2 MB.');
@@ -114,9 +157,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       record();
     } catch (e) { set({ error: String(e) }); }
   },
-  edit: (path, content) => set(s => ({ tabs: s.tabs.map(t => t.path === path ? { ...t, content } : t), notice: '' })),
+  edit: (path, content) => set(s => ({ tabs: s.tabs.map(t => t.path === path && !t.media ? { ...t, content } : t), notice: '' })),
   save: async path => {
-    const file = get().tabs.find(t => t.path === path); if (!file) return;
+    const file = get().tabs.find(t => t.path === path); if (!file || file.media) return;
     set({ busy: true, error: '' });
     try {
       if (get().kind === 'native') await invoke('workspace_write', { path, content: file.content, expected: file.saved });
@@ -132,15 +175,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   createFile: async input => {
     try {
       const path = cleanPath(input.trim());
+      const content = /\.ipynb$/i.test(path) ? JSON.stringify({nbformat: 4, nbformat_minor: 5, metadata: {kernelspec: {name: 'shark-python', display_name: 'Shark Python', language: 'python'}, language_info: {name: 'python'}}, cells: [{id: crypto.randomUUID(), cell_type: 'code', metadata: {}, source: '', outputs: [], execution_count: null}]}, null, 1) + '\n' : '';
       if (get().entries.some(e => e.path === path)) throw new Error('That path already exists. Choose another name.');
-      if (get().kind === 'native') await invoke('workspace_write', { path, content: '', expected: null });
+      if (get().kind === 'native') await invoke('workspace_write', { path, content, expected: null });
       else if (get().kind === 'folder') {
         const all = await scanFolder(folder!);
         if (all.some(e => e.path === path)) throw new Error('That file already exists on disk.');
-        const writer = await (await diskHandle(path, true)).createWritable(); await writer.close();
-      } else { const all = browserFiles(); all[path] = ''; localStorage.setItem(STORAGE, JSON.stringify(all)); }
+        const writer = await (await diskHandle(path, true)).createWritable(); await writer.write(content); await writer.close();
+      } else { const all = browserFiles(); all[path] = content; localStorage.setItem(STORAGE, JSON.stringify(all)); }
       const nextEntries = get().kind === 'native' ? (await invoke<{ entries: ProjectEntry[] }>('workspace_refresh', { expectedRoot: get().root })).entries : entriesFor(Object.fromEntries([...get().entries.filter(e => !e.directory).map(e => [e.path, '']), [path, '']]));
-      set(s => ({ entries: nextEntries, tabs: [...s.tabs, { path, content: '', saved: '' }], activePath: path, notice: get().kind === 'browser' ? 'File created in browser workspace' : 'File created on disk', error: '' }));
+      set(s => ({ entries: nextEntries, tabs: [...s.tabs, { path, content, saved: content }], activePath: path, notice: get().kind === 'browser' ? 'File created in browser workspace' : 'File created on disk', error: '' }));
     } catch (e) { set({ error: String(e) }); }
   },
   reloadFile: async path => {
@@ -148,15 +192,17 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set(s => ({ tabs: s.tabs.filter(t => t.path !== path) }));
     await get().openFile(path);
     if (get().error) set({ tabs: original });
+    else releaseMedia(original.find(t => t.path === path)?.media?.url);
   },
   closeFile: (path, force = false) => {
     const file = get().tabs.find(t => t.path === path);
     if (file && file.content !== file.saved && !force) { set({ error: 'Save this file before closing it.' }); return; }
+    releaseMedia(file?.media?.url);
     set(s => { const tabs = s.tabs.filter(t => t.path !== path); return { tabs, activePath: s.activePath === path ? tabs[tabs.length - 1]?.path || '' : s.activePath }; });
   },
   clearError: () => set({ error: '' }),
   readText: async path => {
-    const open = get().tabs.find(t => t.path === path); if (open) return open.content;
+    const open = get().tabs.find(t => t.path === path); if (open) return open.media ? null : open.content;
     try {
       if (get().kind === 'native') return await invoke<string>('workspace_read', { path });
       if (get().kind === 'folder') return await (await (await diskHandle(path)).getFile()).text();

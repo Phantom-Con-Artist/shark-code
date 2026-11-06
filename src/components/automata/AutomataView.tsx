@@ -1,3 +1,4 @@
+import { confirmAction } from '../../stores/useDialogs';
 import { useEffect, useState } from 'react';
 import { isTauri } from '@tauri-apps/api/core';
 import { Cpu, FlaskConical, Play, Plus, Trash2, Workflow } from 'lucide-react';
@@ -30,7 +31,7 @@ export function AutomataView() {
       <div className="am-pick"><button className="am-name" onClick={() => setPicker(p => !p)} aria-expanded={picker} aria-haspopup="listbox"><Workflow size={14} /><span className="ellipsis">{a.graph?.name ?? 'No workflow'}</span></button>
         {picker && <div className="popover am-menu" role="listbox">
           {a.workflows.map(w => <div key={w.id} className="am-opt"><button role="option" aria-selected={w.id === a.graph?.id} onClick={() => { setPicker(false); void a.open(w.id); }}><span className="ellipsis">{w.name}</span><small>{w.nodes} steps</small></button>
-            <button className="icon-btn sm" aria-label={`Delete ${w.name}`} onClick={() => { if (window.confirm(`Delete “${w.name}”? The file automata/${w.id}.automata.json will be removed.`)) void a.remove(w.id); }}><Trash2 size={12} /></button></div>)}
+            <button className="icon-btn sm" aria-label={`Delete ${w.name}`} onClick={async () => { if (await confirmAction({title: 'Delete workflow?', message: `Remove “${w.name}” and its file automata/${w.id}.automata.json?`, confirmLabel: 'Delete workflow', danger: true})) void a.remove(w.id); }}><Trash2 size={12} /></button></div>)}
           <button className="am-new" onClick={() => { setPicker(false); void a.newGraph(); }}><Plus size={13} />New empty workflow</button>
           {a.templates.length > 0 && <>
             <div className="search-meta" style={{ padding: '6px 10px 2px' }}>Intelligence templates</div>

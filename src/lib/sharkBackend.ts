@@ -37,7 +37,7 @@ export async function request<T>(method: string, params: object = {}): Promise<T
   if (response.error) throw new BackendError(response.error.code, response.error.message);
   return response.result as T;
 }
-export const EXPECTED_RUNTIME = 7;
+export const EXPECTED_RUNTIME = 9;
 export const restartBackend = () => invoke('backend_restart');
 export const sharkBackend = {
   capabilities: () => request<Record<string, unknown>>('capabilities'),
@@ -130,7 +130,7 @@ export const sharkGit = {
   sync: (action: 'fetch' | 'pull' | 'push') => request<{ output: string; status: GitStatus }>('git/sync', { action }),
   deps: () => request<{ groups: { manager: string; manifest: string; section: string; items: { name: string; version: string }[] }[] }>('deps/list'),
 };
-export interface PickedElement { url: string; selector: string; tag: string; id: string; classes: string[]; text: string; html: string; rect: { x: number; y: number; w: number; h: number } }
+export interface PickedElement { url: string; selector: string; tag: string; id: string; classes: string[]; text: string; html: string; rect: { x: number; y: number; w: number; h: number }; viewport?: {w: number; h: number} }
 export interface SourceMatch { path: string; line: number; snippet: string; score: number; matched: string[] }
 export interface PageCheck { available: boolean; error?: string; url?: string; status?: number | null; title?: string; console?: { level: string; message: string }[]; failed_requests?: { url: string; error: string }[]; screenshot?: string; text?: string }
 export const sharkBrowser = {

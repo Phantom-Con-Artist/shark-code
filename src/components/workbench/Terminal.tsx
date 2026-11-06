@@ -27,6 +27,9 @@ export function clearTerminal(sessionId?: string) {
   const id = sessionId ?? useTerminals.getState().activeId;
   sessions.get(id)?.term?.clear();
 }
+export function terminalSelection(id: string) { return sessions.get(id)?.term?.getSelection() ?? ''; }
+export function selectTerminal(id: string) { sessions.get(id)?.term?.selectAll(); }
+export function pasteTerminal(value: string, id: string) { sessions.get(id)?.term?.paste(value); }
 
 export function WorkspaceTerminal({ sessionId }: { sessionId: string }) {
   const container = useRef<HTMLDivElement>(null);
@@ -79,5 +82,5 @@ export function WorkspaceTerminal({ sessionId }: { sessionId: string }) {
   }, [root, sessionId]);
   useEffect(() => { if (terminal.current) terminal.current.options.theme = THEMES[theme]; }, [theme]);
   useEffect(() => { if (terminal.current) terminal.current.options.fontSize = prefs.editorFontSize; }, [prefs.editorFontSize]);
-  return <div className="terminal-surface" ref={container} />;
+  return <div className="terminal-surface" data-terminal-id={sessionId} ref={container} />;
 }

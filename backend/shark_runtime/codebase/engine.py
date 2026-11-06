@@ -13,10 +13,11 @@ from ..core import Fault
 from . import checks, dependencies, semantic, syntax
 
 SCHEMA = 'shark-codebase-v1'
+INDEX_SCHEMA = SCHEMA + ':notebooks-v1'
 EXTENSIONS = (
     '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.pyi', '.rs', '.go',
     '.java', '.c', '.h', '.cpp', '.hpp', '.cs', '.rb', '.kt', '.kts', '.php',
-    '.scala', '.lua', '.sh', '.bash', '.zig', '.html', '.css',
+    '.scala', '.lua', '.sh', '.bash', '.zig', '.html', '.css', '.ipynb',
 )
 FRAMEWORKS = {
     'react': 'React', 'next': 'Next.js', 'vue': 'Vue', 'svelte': 'Svelte', 'vite': 'Vite',
@@ -214,15 +215,16 @@ class Codebase:
                 text = artifact.read_text(encoding='utf-8')
                 if len(text.encode()) != entry['bytes']:
                     raise Fault('invalid_state', 'Source artifact size changed')
-                sources[path] = text
                 cached = saved.get(path)
-                if cached and cached[:2] == (entry['version'], SCHEMA):
+                if cached and cached[:2] == (entry['version'], INDEX_SCHEMA):
                     try:
                         records[path] = json.loads(cached[2])
+                        sources[path] = records[path].get('analysis_source', text)
                         continue
                     except ValueError:
                         pass
                 records[path] = syntax.parse(path, text)
+                sources[path] = records[path].get('analysis_source', text)
             # Do not publish a mixed revision if the workspace changed while collecting inputs.
             if self.core.call('workspace/snapshot')['fingerprint'] != revision:
                 raise Fault('workspace_changed', 'Workspace changed while indexing; retry')
@@ -233,7 +235,7 @@ class Codebase:
                     record = records[entry['path']]
                     self.store.db.execute(
                         'INSERT INTO intelligence_files VALUES(?,?,?,?)',
-                        (entry['path'], entry['version'], SCHEMA, _json(record)),
+                        (entry['path'], entry['version'], INDEX_SCHEMA, _json(record)),
                     )
                     names = ' '.join(s['qualified_name'] for s in record['symbols'])
                     # Searches expose code via the normal source API, but do not index known credential values.
@@ -281,13 +283,23 @@ class Codebase:
         return incoming, outgoing
 
     def report(self, kind, data, partial=False):
+        from .notebook_source import locate
+        def cell_references(value):
+            if isinstance(value, dict):
+                record = self.records.get(value.get('path', ''))
+                if record and record.get('notebook_cells') and type(value.get('line')) is int:
+                    value.update(locate(record['notebook_cells'], value['line']))
+                for child in value.values(): cell_references(child)
+            elif isinstance(value, list):
+                for child in value: cell_references(child)
+        cell_references(data)
         body = {
             'schema': SCHEMA,
             'context_id': self.context_id,
             'revision': self.revision,
             'source_manifest_artifact_id': self.manifest_artifact,
             'provider': {'id': 'shark-core-intelligence', 'version': '2'},
-            'status': 'partial' if partial or self.skipped else 'completed',
+            'status': 'partial' if partial or self.skipped or any(r.get('notebook_limitations') for r in self.records.values()) else 'completed',
             'coverage': {
                 'inventory_files': len(self.manifest),
                 'parsed_files': sum(r['parser'] == 'tree-sitter' for r in self.records.values()),
@@ -295,6 +307,9 @@ class Codebase:
                 'syntax_error_files': [p for p, r in self.records.items() if r['syntax_errors']],
                 'truncated_files': [p for p, r in self.records.items() if r['truncated']],
                 'inventory_policy': 'Native inventory: ignored/hidden/build/metadata files excluded; unsupported syntax is reported.',
+                'notebooks': {p: {'cells': r.get('notebook_cells', []), 'limitations': r.get('notebook_limitations', []),
+                    'line_policy': 'Projected source line numbers; use cell_id and cell_line to navigate the notebook.'}
+                    for p, r in self.records.items() if p.lower().endswith('.ipynb')},
             },
             'kind': kind,
             'data': data,
