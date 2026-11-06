@@ -8,8 +8,8 @@ import { changeKind, FileIcon } from './primitives';
 
 export default function ReviewView() {
   const agent = useAgentWorkspace();
-  const task = agent.tasks.find(t => t.id === agent.activeId);
   const proposal = agent.proposal!;
+  const task = agent.tasks.find(t => t.proposal_id === proposal?.id) ?? agent.tasks.find(t => t.id === agent.activeId);
   const [selected, setSelected] = useState(0);
   const [inline, setInline] = useState(true);
   const [pair, setPair] = useState<{ before: string; after: string } | null>(null);

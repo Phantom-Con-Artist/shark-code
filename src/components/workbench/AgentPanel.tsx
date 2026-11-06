@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import {
   AlertCircle, ArrowRight, ArrowUp, AtSign, BookOpen, Bot, Bug, Check, ChevronDown, ChevronRight, CircleAlert, FileCode2, FilePen, FilePlus2,
@@ -19,6 +19,7 @@ import { changeKind, FileIcon, Popover, SharkMark } from './primitives';
 import { detectTasks, defaultTask } from './tasks';
 import { askAgent } from './BottomPanel';
 import { pluginPrompt } from './plugins';
+import { coalesceMessageEvents } from '../../lib/conversationEvents';
 
 const STATUS: Record<string, string> = { created: 'Not started', running: 'Working', review: 'Ready to review', applied: 'Applied', completed: 'Done', cancelled: 'Stopped', interrupted: 'Interrupted', failed: 'Failed', paused: 'Paused', waiting_human: 'Needs your answer', blocked: 'Needs attention' };
 
@@ -42,25 +43,50 @@ async function runDefaultTask(group: 'build' | 'test') {
 }
 
 /* Goal encoding: follow-up context and attachments travel inside the task goal. */
-const CONTEXT = /^\[context\]\n([\s\S]*?)\n\[\/context\]\n\n/;
-const AUTOMATA = /^\[automata\]\n[\s\S]*?\n\[\/automata\]\n\n/;
+const CONTEXT = /^\[context\]\r?\n([\s\S]*?)\r?\n\[\/context\](?:\r?\n)*/;
+const TRUNCATED_CONTEXT = /^\[context\]\r?\n([\s\S]*)$/;
+const AUTOMATA = /^\[automata\]\r?\n[\s\S]*?\r?\n\[\/automata\](?:\r?\n)*/;
 const ATTACHED = /\n\n(?:Open file|Attached files): (.+)$/;
 export function parseGoal(goal: string) {
   let text = goal, continues = '', previousId = '', files: string[] = [];
-  const am = AUTOMATA.exec(text); if (am) text = text.slice(am[0].length);
-  const c = CONTEXT.exec(text); if (c) { continues = /Previous request: (.*)/.exec(c[1])?.[1] ?? ''; previousId = /PreviousId: (\S+)/.exec(c[1])?.[1] ?? ''; text = text.slice(c[0].length); }
+  while (true) {
+    const am = AUTOMATA.exec(text);
+    if (am) { text = text.slice(am[0].length); continue; }
+    const c = CONTEXT.exec(text);
+    if (c) {
+      continues = /Previous request: (.*)/.exec(c[1])?.[1]?.trim() ?? continues;
+      previousId = /PreviousId: (\S+)/.exec(c[1])?.[1]?.trim() ?? previousId;
+      text = text.slice(c[0].length);
+      continue;
+    }
+    const tc = TRUNCATED_CONTEXT.exec(text);
+    if (tc) {
+      continues = /Previous request: (.*)/.exec(tc[1])?.[1]?.trim() ?? continues;
+      previousId = /PreviousId: (\S+)/.exec(tc[1])?.[1]?.trim() ?? previousId;
+      text = continues || 'Follow-up';
+    }
+    break;
+  }
   const a = ATTACHED.exec(text); if (a) { files = a[1].split(', '); text = text.slice(0, a.index); }
   return { text, continues, previousId, files };
+}
+export function resolvePreviousId(tasks: { id: string; goal: string }[], task: { id: string; goal: string }) {
+  const parsed = parseGoal(task.goal);
+  if (parsed.previousId) return parsed.previousId;
+  if (!parsed.continues) return '';
+  const idx = tasks.findIndex(t => t.id === task.id);
+  const pool = idx >= 0 ? tasks.slice(idx + 1) : tasks.filter(t => t.id !== task.id);
+  return pool.find(t => parseGoal(t.goal).text.split('\n')[0].slice(0, 300).trim() === parsed.continues)?.id ?? '';
 }
 /** Earlier turns a task continues from, oldest first, so a follow-up renders as one conversation. */
 export function conversationChain(tasks: { id: string; goal: string; summary?: string | null; status: string }[], taskId: string) {
   const byId = new Map(tasks.map(t => [t.id, t]));
   const chain: typeof tasks = [];
-  let id = byId.get(taskId) ? parseGoal(byId.get(taskId)!.goal).previousId : '';
+  let id = byId.get(taskId) ? resolvePreviousId(tasks, byId.get(taskId)!) : '';
   const seen = new Set<string>([taskId]);
   while (id && byId.has(id) && !seen.has(id) && chain.length < 50) {
     const t = byId.get(id)!; chain.unshift(t); seen.add(id);
-    id = parseGoal(t.goal).previousId;
+    id = resolvePreviousId(tasks, t);
   }
   return chain;
 }
@@ -79,7 +105,7 @@ export type Usage = {
   context?: number; context_cached?: number; compactions?: number; retries?: number;
 };
 // Context windows by engine when the engine does not report one (Claude reports its own).
-const WINDOWS: Partial<Record<string, number>> = { 'claude-code': 200_000, anthropic: 200_000, antigravity: 1_048_576, gemini: 1_048_576, codex: 400_000 };
+const WINDOWS: Partial<Record<string, number>> = { 'claude-code': 200_000, anthropic: 200_000, antigravity: 1_048_576, gemini: 1_048_576, codex: 400_000, muse: 1_007_997 };
 export const kTokens = (n: number) => n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n);
 /** Live context fill (0-1, null when unknown) and prompt-cache reuse on the latest call. */
 export function contextState(usage: Usage | null, engine?: string | null) {
@@ -93,14 +119,15 @@ export function contextState(usage: Usage | null, engine?: string | null) {
 }
 export const MODE_ICONS: Record<ModeId, typeof Wrench> = { chat: MessagesSquare, builder: Hammer, debugger: Bug, review: ShieldAlert, planner: ListChecks, explain: BookOpen, tests: FlaskConical, refactor: Wand2 };
 
-function toBlocks(events: TaskEvent[], running: boolean) {
+export function toBlocks(events: TaskEvent[], running: boolean) {
   const blocks: Block[] = [];
   let streaming = '';
   let totals: Usage | null = null;
   let live: { context: number; context_cached: number } | null = null;
   let compactions = 0, retries = 0;
   const closeThinking = () => { const last = blocks.at(-1); if (last?.type === 'thinking') last.done = true; };
-  for (const e of events) {
+  const flushStreaming = () => { if (streaming) {blocks.push({type: 'text', text: streaming}); streaming = '';} };
+  for (const e of coalesceMessageEvents(events)) {
     const last = blocks.at(-1);
     if (e.kind === 'thinking_delta' || e.kind === 'thinking') {
       const text = String(e.data.text ?? '');
@@ -110,15 +137,23 @@ function toBlocks(events: TaskEvent[], running: boolean) {
     }
     if (e.kind === 'text_delta') { closeThinking(); streaming += String(e.data.text ?? ''); continue; }
     if (e.kind === 'tool_call') {
-      closeThinking(); streaming = '';
+      closeThinking(); flushStreaming();
       const step: Step = { id: String(e.data.call_id ?? e.sequence), name: String(e.data.name ?? 'tool'), target: String(e.data.target ?? ''), done: false, error: false };
       // A subagent's own calls nest under the step that started it.
       const owner = e.data.parent ? blocks.flatMap(b => b.type === 'steps' ? b.steps : []).find(st => st.id === String(e.data.parent)) : undefined;
       if (owner) { (owner.children ??= []).push(step); continue; }
-      if (last?.type === 'steps') last.steps.push(step); else blocks.push({ type: 'steps', steps: [step] });
+      const previous = blocks.at(-1);
+      if (previous?.type === 'steps') previous.steps.push(step); else blocks.push({ type: 'steps', steps: [step] });
     } else if (e.kind === 'tool_result') {
-      for (const b of blocks) if (b.type === 'steps') for (const st of b.steps) for (const x of [st, ...(st.children ?? [])]) if (x.id === String(e.data.call_id)) { x.done = true; x.error = !!e.data.error; }
-    } else if (e.kind === 'text') { closeThinking(); streaming = ''; blocks.push({ type: 'text', text: String(e.data.text ?? '') }); }
+      for (const b of blocks) if (b.type === 'steps') for (const st of b.steps) for (const x of [st, ...(st.children ?? [])]) if (x.id === String(e.data.call_id)) { x.done = true; x.error = !!e.data.error; if (!x.target && e.data.target) x.target = String(e.data.target); }
+    } else if (e.kind === 'text') {
+      closeThinking();
+      const snapshot = String(e.data.text ?? '');
+      // Older runtimes stored shortened final snapshots; keep the full streamed prefix.
+      const text = streaming.startsWith(snapshot) ? streaming : snapshot;
+      streaming = '';
+      blocks.push({ type: 'text', text });
+    }
     else if (e.kind === 'error') { closeThinking(); blocks.push({ type: 'error', message: String(e.data.message ?? 'Shark reported an error.'), category: String(e.data.category ?? 'other') }); }
     else if (e.kind === 'notice' && (e.data.kind === 'compaction' || e.data.kind === 'retry')) {
       if (e.data.kind === 'compaction') compactions++; else retries++;
@@ -141,9 +176,31 @@ function toBlocks(events: TaskEvent[], running: boolean) {
     if (b.type === 'thinking' && (!running || later)) b.done = true;
     later = true;
   }
+  if (!running) flushStreaming();
   const usage: Usage | null = totals || live ? { input: 0, output: 0, cached: 0, ...totals, ...(live ?? {}), compactions, retries } : null;
   return { blocks, streaming: running ? streaming : '', usage };
 }
+
+const HistoryTurn = memo(function HistoryTurn({goal, summary, status, events, root, onReview}: {goal: string; summary?: string | null; status: string; events?: TaskEvent[]; root: string; onReview?: () => void}) {
+  const request = useMemo(() => parseGoal(goal), [goal]);
+  const response = useMemo(() => toBlocks(events ?? [], false), [events]);
+  return <div className="turn-history">
+    <div className="msg-user">
+      <div className="msg-text">{request.text}</div>
+      {request.files.length > 0 && <div className="attached">{request.files.map(f => <span key={f} className="ctx-chip"><FileIcon path={f} size={11} />{f.split('/').pop()}</span>)}</div>}
+    </div>
+    <div className="msg-shark"><SharkMark className="msg-avatar" /><div className="msg-body">
+      {events ? response.blocks.map((b, i) => b.type === 'text' ? <Markdown key={i} text={b.text} />
+        : b.type === 'thinking' ? <Thinking key={i} block={b} />
+        : b.type === 'steps' ? <Steps key={i} steps={b.steps} root={root} />
+        : b.type === 'lifecycle' ? <Lifecycle key={i} block={b} />
+        : <p key={i} className="notice">{b.type === 'error' ? b.message : b.text}</p>)
+        : <p className="fine">Loading earlier reply…</p>}
+      {events && response.blocks.length === 0 && (summary ? <Markdown text={summary} /> : <p className="fine">{STATUS[status]}</p>)}
+      {status === 'review' && onReview && <div className="actions"><button type="button" className="btn sm" onClick={onReview}><GitCompareArrows size={12} /> Review proposed changes</button></div>}
+    </div></div>
+  </div>;
+});
 
 function Lifecycle({ block }: { block: Extract<Block, { type: 'lifecycle' }> }) {
   if (block.kind === 'retry') return <p className="notice warn lifecycle"><RotateCw size={13} className="spin-slow" />Provider busy, retrying automatically.</p>;
@@ -277,7 +334,7 @@ export function AgentPanel() {
   const [pending, setPending] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [menu, setMenu] = useState<null | 'model' | 'attach' | 'mode'>(null);
-  const [autonomous, setAutonomous] = useState(true);
+  const [autonomous, setAutonomous] = useState(false);
   const [parallel, setParallel] = useState<ProviderId[]>([]);
   const [fileQuery, setFileQuery] = useState('');
   const [menuIndex, setMenuIndex] = useState(0);
@@ -302,6 +359,15 @@ export function AgentPanel() {
   const anyRunning = agent.tasks.some(t => t.status === 'running');
   const goal = task ? parseGoal(task.goal) : null;
   const chain = useMemo(() => task ? conversationChain(agent.tasks, task.id) : [], [agent.tasks, task?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  const missingHistoryIds = chain.filter(t => !agent.historyEvents[t.id]).map(t => t.id).join(',');
+  useEffect(() => { if (missingHistoryIds && native) void agent.loadHistory(missingHistoryIds.split(',')); }, [missingHistoryIds, native]); // eslint-disable-line react-hooks/exhaustive-deps
+  const pendingFollowUp = pending !== null && !!task && task.status !== 'created' && !running;
+  const displayChain = useMemo(() => pendingFollowUp && task ? [...chain, task] : chain, [chain, pendingFollowUp, task]);
+  const activeGoal = pendingFollowUp ? parseGoal(pending!) : (goal ?? (pending !== null ? parseGoal(pending) : null));
+  const activeBlocks = pendingFollowUp ? [] : blocks;
+  const activeStreaming = pendingFollowUp ? '' : streaming;
+  const activeUsage = pendingFollowUp ? null : usage;
+  const headTitle = displayChain.length > 0 ? parseGoal(displayChain[0].goal).text.split('\n')[0] : activeGoal ? activeGoal.text.split('\n')[0] : '';
   const startedAt = agent.events.find(e => e.kind === 'started')?.timestamp;
   const finishedAt = [...agent.events].reverse().find(e => ['completed', 'failed', 'cancelled', 'review', 'proposal'].includes(e.kind))?.timestamp;
   const empty = !task && pending === null;
@@ -385,8 +451,16 @@ export function AgentPanel() {
       const files = [...attachments, ...(s.attachActiveFile && project.activePath && !attachments.includes(project.activePath) ? [project.activePath] : [])];
       if (files.length) goalText += `\n\nAttached files: ${files.join(', ')}`;
       if (task && task.status !== 'created') {
+        const cleanCtx = (v: string) => v.replace(/\[\/context\]/gi, '[ /context ]');
+        const earlier = chain.slice(-6).map((t, idx) => {
+          const req = parseGoal(t.goal).text.split('\n')[0].slice(0, 240);
+          const evText = (agent.historyEvents[t.id] ?? []).filter(e => e.kind === 'text').map(e => String(e.data.text ?? '')).join('\n');
+          const res = (t.summary || evText || STATUS[t.status] || '').slice(0, 500);
+          return `Turn ${idx + 1} user: ${cleanCtx(req)}\nTurn ${idx + 1} assistant: ${cleanCtx(res)}`;
+        }).join('\n');
         const previous = task.summary || [...blocks].reverse().find(b => b.type === 'text')?.text || STATUS[task.status];
-        goalText = `[context]\nPreviousId: ${task.id}\nPrevious request: ${parseGoal(task.goal).text.split('\n')[0].slice(0, 300)}\nPrevious result: ${String(previous).slice(0, 1500)}\n[/context]\n\n${goalText}`;
+        const historyBlock = earlier ? `Earlier turns:\n${earlier.slice(-2400)}\n` : '';
+        goalText = `[context]\nPreviousId: ${task.id}\nPrevious request: ${cleanCtx(parseGoal(task.goal).text.split('\n')[0].slice(0, 300))}\n${historyBlock}Previous result: ${cleanCtx(String(previous).slice(0, 1500))}\n[/context]\n\n${goalText}`;
       }
     }
     if (!passThrough && s.view === 'automata') goalText = `[automata]\n${(await import('../automata/brief')).automataBrief()}\n[/automata]\n\n${goalText}`;
@@ -529,7 +603,7 @@ export function AgentPanel() {
 
   return <section className={`agent-main ${empty ? 'is-empty' : ''}`} aria-label="Shark">
     <header className="agent-head">
-      <span className="title" title={goal?.text}>{goal ? goal.text.split('\n')[0] : pending ? parseGoal(pending).text.split('\n')[0] : ''}</span>
+      <span className="title" title={headTitle}>{headTitle}</span>
       <button className="icon-btn" aria-label="Shark sessions" title="Sessions" onClick={() => s.set({ sidebarOpen: true, sidebarView: 'sessions' })}><History size={15} /></button>
       <button className="icon-btn" aria-label="New chat" title="New chat · Ctrl N" onClick={() => { agent.fresh(); setInput(''); setNote(''); setAttachments([]); textarea.current?.focus(); }}><Plus size={16} /></button>
     </header>
@@ -554,35 +628,32 @@ export function AgentPanel() {
               {PROVIDERS[t.engine as ProviderId]?.label ?? t.engine}<small>{STATUS[t.status]}</small>
             </button>)}
           </div>}
-          {chain.map(t => { const cg = parseGoal(t.goal); const answer = t.summary || STATUS[t.status]; return <div key={t.id} className="turn-history">
-            <div className="msg-user"><div className="msg-text">{cg.text}</div></div>
-            <div className="msg-shark"><SharkMark className="msg-avatar" /><div className="msg-body"><p className="prose">{answer}</p></div></div>
-          </div>; })}
-          {(() => { const g = goal ?? parseGoal(pending ?? ''); return <div className="msg-user">
+          {displayChain.map(t => <HistoryTurn key={t.id} goal={t.goal} summary={t.summary} status={t.status} events={agent.historyEvents[t.id] ?? (t.id === task?.id ? agent.events : undefined)} root={project.root} onReview={t.status === 'review' ? () => { void agent.review(); useUi.getState().set({ editorView: 'review' }); } : undefined} />)}
+          {(() => { const g = activeGoal ?? parseGoal(pending ?? ''); return <div className="msg-user">
             <div className="msg-text">{g.text}</div>
             {g.files.length > 0 && <div className="attached">{g.files.map(f => <span key={f} className="ctx-chip"><FileIcon path={f} size={11} />{f.split('/').pop()}</span>)}</div>}
           </div>; })()}
           <div className="msg-shark">
             <SharkMark className={`msg-avatar ${running || pending !== null ? 'swimming' : ''}`} />
             <div className="msg-body">
-              {blocks.map((b, i) => b.type === 'thinking' ? <Thinking key={i} block={b} />
+              {activeBlocks.map((b, i) => b.type === 'thinking' ? <Thinking key={i} block={b} />
                 : b.type === 'steps' ? <Steps key={i} steps={b.steps} root={project.root} />
                 : b.type === 'text' ? <Markdown key={i} text={b.text} />
                 : b.type === 'notice' ? <p key={i} className="notice"><Info size={13} />{b.text}</p>
                 : b.type === 'lifecycle' ? <Lifecycle key={i} block={b} />
                 : <ErrorCallout key={i} block={b} onRetry={() => { setInput(goal?.text ?? ''); textarea.current?.focus(); }}
                     onNewChat={() => { const sum = task?.summary || goal?.text || ''; agent.fresh(); setInput(`Continue from a previous chat. Summary so far:\n${sum.slice(0, 1500)}\n\nNext: `); textarea.current?.focus(); }} />)}
-              {(() => { const st = contextState(usage, task?.engine); return st?.fill != null && st.fill > 0.75 && <p className={`notice ${st.fill > 0.9 ? 'danger' : 'warn'}`}><CircleAlert size={13} />
+              {(() => { const st = contextState(activeUsage, task?.engine); return st?.fill != null && st.fill > 0.75 && <p className={`notice ${st.fill > 0.9 ? 'danger' : 'warn'}`}><CircleAlert size={13} />
                 Context {Math.round(st.fill * 100)}% full{st.fill > 0.9 ? '. The engine will compact soon and may lose early details.' : '.'} Start a new chat to keep Shark's full attention.</p>; })()}
-              {streaming && <Markdown text={streaming} streaming={!s.reduceMotion} />}
+              {activeStreaming && <Markdown text={activeStreaming} streaming={!s.reduceMotion} />}
               {(pending !== null || running) &&
                 <div className="working"><span className="shark-wake" aria-hidden="true"><SharkMark className="wake-fin" /></span><span className="thinking-label">{pending !== null ? 'Starting' : 'Working'}<span className="dots"><i /><i /><i /></span></span>{startedAt && running && <span className="muted elapsed">{elapsed(now / 1000 - startedAt)}</span>}</div>}
-              {task?.workflow_id && <WorkflowControls task={task} />}
-              {task && agent.proposal && task.proposal_id === agent.proposal.id && <ProposalCard />}
-              {task && !running && task.status === 'cancelled' && <p className="fine">Stopped.</p>}
-              {task && !running && startedAt && finishedAt && <p className="fine run-time">{task.status === 'cancelled' ? 'Stopped after' : task.status === 'failed' ? 'Failed after' : 'Finished in'} {elapsed(finishedAt - startedAt)}</p>}
-              {task && !running && task.status === 'interrupted' && <p className="fine">Interrupted when the backend restarted.</p>}
-              {task && !running && task.status === 'completed' && !agent.proposal && blocks.length > 0 && <p className="fine done-note"><Check size={12} /> Done. No file changes.</p>}
+              {!pendingFollowUp && task?.workflow_id && <WorkflowControls task={task} />}
+              {!pendingFollowUp && !running && task && agent.proposal && <ProposalCard />}
+              {!pendingFollowUp && task && !running && task.status === 'cancelled' && <p className="fine">Stopped.</p>}
+              {!pendingFollowUp && task && !running && startedAt && finishedAt && <p className="fine run-time">{task.status === 'cancelled' ? 'Stopped after' : task.status === 'failed' ? 'Failed after' : 'Finished in'} {elapsed(finishedAt - startedAt)}</p>}
+              {!pendingFollowUp && task && !running && task.status === 'interrupted' && <p className="fine">Interrupted when the backend restarted.</p>}
+              {!pendingFollowUp && task && !running && task.status === 'completed' && !agent.proposal && activeBlocks.length > 0 && <p className="fine done-note"><Check size={12} /> Done. No file changes.</p>}
             </div>
           </div>
         </div>
@@ -622,7 +693,7 @@ function FileDiff({ file }: { file: { path: string; before_artifact: string | nu
 function ProposalCard() {
   const agent = useAgentWorkspace();
   const proposal = agent.proposal!;
-  const task = agent.tasks.find(t => t.id === agent.activeId);
+  const task = agent.tasks.find(t => t.proposal_id === proposal.id) ?? agent.tasks.find(t => t.id === agent.activeId);
   const applied = proposal.status === 'applied';
   const [open, setOpen] = useState<string | null>(proposal.files.length === 1 ? proposal.files[0].path : null);
   const openReview = () => useUi.getState().set({ editorView: 'review' });

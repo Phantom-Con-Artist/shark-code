@@ -424,7 +424,7 @@ class Orchestrator:
             error = next((e['data'] for e in reversed(events) if e['kind'] == 'error'), {})
             raise Fault('transient_' + error['category'] if error.get('category') in {'network', 'rate_limit'} else 'agent_failed',
                         'Agent step failed; inspect its recorded events')
-        elif step['spec'].get('require_proposal', True) or repair:
+        elif repair:
             raise Fault('agent_no_proposal', 'The implementation step produced no reviewable changes')
         with child.store.lock:
             messages = child.store.db.execute("SELECT body FROM events WHERE task_id=? AND kind='text' ORDER BY sequence DESC LIMIT 8", (task['id'],)).fetchall()
@@ -507,18 +507,18 @@ class Orchestrator:
         with self.lock:
             record = self._load(record['id'])
             record['candidate_revision'] = revision
+            checks = sum(s['spec']['kind'] == 'check' and s['status'] == 'succeeded' for s in record['steps'])
+            summary = '\n'.join([str((s['result'] or {}).get('summary', '')) for s in record['steps'] if s['spec']['kind'] == 'agent' and (s.get('result') or {}).get('summary')] +
+                                [str(summary) for s in record['steps'] for summary in (s['result'] or {}).get('repair_summaries', [])])[:1800]
             if not operations:
-                if any(s['spec']['kind'] == 'agent' and not MODES[s['spec'].get('mode', record['definition']['run']['mode'])]['read_only'] for s in record['steps']):
-                    record['gate'] = {'id': uuid.uuid4().hex, 'kind': 'approval', 'question': 'The workflow produced no source changes. Accept this outcome?',
-                                      'no_changes': True, 'source_versions': _workspace_versions(child.core.root)}
-                    record['status'] = 'waiting_human'
-                else:
-                    record['status'] = 'completed'
+                if summary:
+                    task = self.service.store.get(record['task_id'])
+                    task['summary'] = summary
+                    self.service.store.save(task)
+                    record['summary'] = summary[:500]
+                record['status'] = 'completed'
                 self._save(record, record['status'])
                 return
-            checks = sum(s['spec']['kind'] == 'check' and s['status'] == 'succeeded' for s in record['steps'])
-            summary = '\n'.join([str((s['result'] or {}).get('summary', '')) for s in record['steps'] if s['spec']['kind'] == 'agent'] +
-                                [str(summary) for s in record['steps'] for summary in (s['result'] or {}).get('repair_summaries', [])])[:1800]
             self.service.execute('task/propose', {'id': record['task_id'], 'changes': operations,
                                  'summary': summary or 'Workflow changes are ready for review.',
                                  'review_notes': f'{checks} configured validation command(s) passed on candidate {revision[:12]}. '

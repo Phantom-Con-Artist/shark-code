@@ -314,6 +314,7 @@ class AgentHost:
                 if cancelled.is_set():
                     abort.set()
                 task = self.service.store.get(task_id)
+                last_text = ""
                 async for event in runner.run_async(user_id="local", session_id=task_id,
                         new_message=types.Content(role="user", parts=[types.Part(text=brief or task["goal"])]),
                         run_config=RunConfig(streaming_mode=StreamingMode.SSE, max_llm_calls=30), abort_signal=abort):
@@ -330,15 +331,20 @@ class AgentHost:
                             if part.text and part.thought:
                                 self.service.store.event(task_id, "thinking_delta" if event.partial else "thinking", {"text": part.text[:6000]})
                             elif part.text:
-                                text = part.text
-                                for start in range(0, len(text), 2500):
-                                    self.service.store.event(task_id, "text_delta" if event.partial else "text", {"text": text[start:start+2500]})
+                                self.service.store.event(task_id, "text_delta" if event.partial else "text", {"text": part.text})
+                                if not event.partial:
+                                    last_text = part.text
                             if part.function_call:
                                 self.service.store.event(task_id, "tool_call", {"name": part.function_call.name, "call_id": part.function_call.id})
                             if part.function_response:
                                 self.service.store.event(task_id, "tool_result", {"name": part.function_response.name, "call_id": part.function_response.id})
                 if cancelled.is_set():
                     status = "cancelled"
+                elif last_text.strip():
+                    latest = self.service.store.get(task_id)
+                    if not latest.get("summary"):
+                        latest["summary"] = last_text.strip()[:2000]
+                        self.service.store.save(latest)
             finally:
                 watcher.cancel()
                 await asyncio.gather(watcher, return_exceptions=True)

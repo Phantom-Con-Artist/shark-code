@@ -50,9 +50,17 @@ class Store:
         return task
 
     def event(self, task_id, kind, body):
+        # Preserve the whole message while keeping each event pageable, including Unicode.
+        chunks = [body]
+        if kind in {'text', 'text_delta', 'thinking', 'thinking_delta'} and isinstance(body.get('text'), str) and len(body['text']) > 1500:
+            text = body['text']
+            identity = uuid.uuid4().hex
+            count = (len(text) + 1499) // 1500
+            chunks = [{**body, 'text': text[start:start + 1500], 'message_id': identity, 'part': index, 'parts': count}
+                      for index, start in enumerate(range(0, len(text), 1500))]
         with self.lock, self.db:
-            self.db.execute("INSERT INTO events(task_id,kind,body,timestamp) VALUES(?,?,?,?)",
-                            (task_id, kind, json.dumps(body), time.time()))
+            self.db.executemany("INSERT INTO events(task_id,kind,body,timestamp) VALUES(?,?,?,?)",
+                               [(task_id, kind, json.dumps(chunk), time.time()) for chunk in chunks])
 
     def events(self, task_id, after=0, limit=50):
         self.get(task_id)
@@ -66,7 +74,7 @@ class Store:
         for sequence, kind, body, timestamp in rows[:limit]:
             event = {"sequence": sequence, "kind": kind, "data": json.loads(body), "timestamp": timestamp}
             size = len(json.dumps(event).encode())
-            if used + size > 23000:
+            if used + size > 23000 and page:
                 break
             page.append(event)
             used += size
@@ -88,8 +96,5 @@ class Store:
             raise Fault("invalid_range", "Task list limit must be 1–100")
         with self.lock:
             rows = self.db.execute("SELECT body FROM tasks ORDER BY json_extract(body, '$.created_at') DESC LIMIT ?", (limit + 1,)).fetchall()
-        tasks = []
-        for (body,) in rows[:limit]:
-            task = json.loads(body)
-            tasks.append({**task, "goal": task["goal"][:200]})
+        tasks = [json.loads(body) for (body,) in rows[:limit]]
         return {"tasks": tasks, "has_more": len(rows) > limit}

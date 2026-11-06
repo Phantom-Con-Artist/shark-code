@@ -162,6 +162,17 @@ if(cmd==='backend_request'||cmd==='workspace_read'||cmd==='workspace_write'||cmd
             assert (work/'.test-trash/renamed.png').is_file()
             assert not native_dialogs,native_dialogs
             print('PASS Explorer context menu, rename, app confirmation, cancel and trash UI; no WebKit dialogs')
+            page.get_by_role('button',name='Automata',exact=True).click()
+            page.wait_for_selector('.am')
+            page.evaluate('''async()=>{const url=performance.getEntriesByType('resource').map(e=>e.name).findLast(u=>u.includes('/src/stores/useAutomata.ts')&&!u.includes('raw'));const {useAutomata}=await import(url);useAutomata.setState({graph:{id:'spacing',name:'Codebase Health & Security Gate',version:1,nodes:[],edges:[]},selected:[],dock:'inspector',dockOpen:true,dirty:false});}''')
+            expect(page.locator('#wf-name')).to_be_visible()
+            positions=page.evaluate('''()=>{const field=document.querySelector('#wf-name').parentElement;const box=el=>{const r=el.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:r.height};};return {label:box(field.querySelector('label')),input:box(field.querySelector('input')),field:box(field),summary:box(field.nextElementSibling)};}''')
+            assert positions['label']['bottom']+3<=positions['input']['top'],positions
+            assert positions['input']['bottom']<=positions['field']['bottom']+1,positions
+            assert positions['field']['bottom']<=positions['summary']['top'],positions
+            page.screenshot(path='/tmp/shark-automata-spacing.png')
+            page.get_by_role('button',name='Code',exact=True).click()
+            print('PASS Automata workflow label, input and metadata have separate non-overlapping bounds')
             for width in [900,1100,1265,1440,1920]:
                 page.set_viewport_size({'width':width,'height':1000})
                 page.wait_for_timeout(150)

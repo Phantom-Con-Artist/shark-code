@@ -75,6 +75,19 @@ def models(provider):
         return [{"id": m, "label": m} for m in dict.fromkeys(f for f in found if isinstance(f, str) and f)]
     if provider == "claude-code":
         return [{"id": "opus", "label": "Opus"}, {"id": "sonnet", "label": "Sonnet"}, {"id": "haiku", "label": "Haiku"}]
+    if provider == "muse":
+        catalog_dir = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "muse" / "model-catalog"
+        found = []
+        for path in sorted(catalog_dir.glob("*.json")) if catalog_dir.is_dir() else []:
+            try:
+                rows = json.loads(path.read_text(encoding="utf-8")).get("rows") or []
+            except (OSError, ValueError):
+                continue
+            for row in sorted(rows, key=lambda r: (not r.get("is_current"), not r.get("is_default"))):
+                mid = row.get("model_id")
+                if isinstance(mid, str) and mid and row.get("visibility") == "visible" and not row.get("supports_image_generation"):
+                    found.append({"id": mid, "label": str(row.get("display_label") or mid)})
+        return found or [{"id": "muse-spark-1.3", "label": "muse-spark-1.3"}, {"id": "muse-wonder-1.0", "label": "muse-wonder-1.0"}]
     return []
 
 
@@ -278,7 +291,7 @@ def translate(provider, line):
         if kind == "stream_event":
             delta = (event.get("event") or {}).get("delta") or {}
             if delta.get("type") == "text_delta" and delta.get("text"):
-                out.append(("text_delta", {"text": delta["text"][:2500]}))
+                out.append(("text_delta", {"text": delta["text"]}))
             elif delta.get("type") == "thinking_delta" and delta.get("thinking"):
                 out.append(("thinking_delta", {"text": delta["thinking"][:2500]}))
             inner = event.get("event") or {}
@@ -296,7 +309,7 @@ def translate(provider, line):
                         out.append(("tool_call", {"name": part.get("name", "tool"), "call_id": part.get("id"), "target": str(target)[:300], "parent": parent}))
                     continue
                 if part.get("type") == "text" and part.get("text"):
-                    out.append(("text", {"text": part["text"][:6000]}))
+                    out.append(("text", {"text": part["text"]}))
                 elif part.get("type") == "thinking" and part.get("thinking"):
                     out.append(("thinking", {"text": part["thinking"][:6000]}))
                 elif part.get("type") == "tool_use":
@@ -321,10 +334,10 @@ def translate(provider, line):
         item = event.get("item") or {}
         itype = item.get("type")
         if kind == "item.completed" and itype == "agent_message" and item.get("text"):
-            out.append(("text", {"text": item["text"][:6000]}))
+            out.append(("text", {"text": item["text"]}))
             final = item["text"]
         elif kind == "item.completed" and itype == "reasoning" and item.get("text"):
-            out.append(("thinking", {"text": item["text"][:6000]}))
+            out.append(("thinking", {"text": item["text"]}))
         elif kind == "item.completed" and itype in ("command_execution", "mcp_tool_call", "web_search"):
             out.append(("tool_result", {"call_id": item.get("id"), "error": item.get("exit_code") not in (None, 0) or item.get("status") == "failed"}))
         elif kind == "item.started" and itype == "command_execution":
@@ -358,7 +371,7 @@ def translate(provider, line):
                 if step.get(key):
                     out.append(("thinking_delta", {"text": str(step[key])[:2500]}))
             if step.get("text_delta"):
-                out.append(("text_delta", {"text": str(step["text_delta"])[:2500]}))
+                out.append(("text_delta", {"text": str(step["text_delta"])}))
             su = step.get("usage") or {}
             if su.get("input_tokens"):  # per model call
                 out.append(("usage", {"context": su.get("input_tokens", 0) + su.get("cache_read_tokens", 0), "context_cached": su.get("cache_read_tokens", 0)}))
@@ -374,12 +387,33 @@ def translate(provider, line):
         ptype = str(event.get("payload_type", ""))
         payload = event.get("payload") or {}
         if ptype == "run.usage":
-            out.append(("usage", {"input": payload.get("input_tokens", 0), "output": payload.get("output_tokens", 0), "cached": payload.get("cached_tokens", 0)}))
+            models_usage = [m for m in (payload.get("models") or []) if isinstance(m, dict)]
+            inp = payload.get("input_tokens") or sum(m.get("input_tokens", 0) for m in models_usage)
+            out_tok = payload.get("output_tokens") or sum(m.get("output_tokens", 0) + m.get("reasoning_tokens", 0) for m in models_usage)
+            cached = payload.get("cached_tokens") or sum(m.get("cached_tokens", 0) for m in models_usage)
+            out.append(("usage", {"input": inp, "output": out_tok, "cached": cached, "context": inp, "context_cached": cached}))
         elif ptype == "run.output.delta" and payload.get("text"):
-            out.append(("text_delta", {"text": str(payload["text"])[:2500]}))
+            out.append(("text_delta", {"text": str(payload["text"])}))
+        elif ptype == "task.lifecycle.side_effect_intent":
+            inner = payload.get("event") or {}
+            op = str(inner.get("operation") or "")
+            if op.startswith("tool:"):
+                idem = str(inner.get("idempotency_key") or "")
+                call_id = idem.removeprefix("tool:") if idem.startswith("tool:") else (inner.get("task_id") or payload.get("task_id"))
+                out.append(("tool_call", {"name": op.removeprefix("tool:"), "call_id": call_id, "target": ""}))
+        elif ptype == "tool.result":
+            facts = payload.get("correlation_facts") or {}
+            first_line = str(payload.get("text") or "").splitlines()[0] if payload.get("text") else ""
+            target_match = re.search(r"`([^`\n]{1,200})`", first_line)
+            is_err = bool(payload.get("is_error") or payload.get("error") or (facts.get("outcome") not in (None, "success")))
+            out.append(("tool_result", {"call_id": payload.get("call_id"), "error": is_err,
+                                        **({"target": target_match.group(1)} if target_match else {})}))
         elif "tool" in ptype and ptype.endswith(("started", "requested")):
             name = payload.get("tool_name") or payload.get("name") or (payload.get("tool") or {}).get("name") or "tool"
             out.append(("tool_call", {"name": str(name), "call_id": payload.get("call_id"), "target": str(payload.get("path") or payload.get("command") or "")[:300]}))
+        elif ptype == "run.terminal.completed":
+            if isinstance(payload.get("text"), str) and payload["text"]:
+                final = payload["text"]
         elif ptype.startswith("run.terminal.") and ptype != "run.terminal.completed":
             out.append(("error", {"code": "cli_error", "message": str(payload.get("reason") or payload.get("message") or "Muse run did not complete")[:500]}))
     from .modes import classify
@@ -410,6 +444,59 @@ def code_map(service, goal, limit=8):
     return "\n\nRELEVANT CODE (from Shark's code graph; verify by reading files):\n" + "\n".join(lines), len(lines)
 
 
+def _seed_previous_proposal(service, copy: Path, raw_goal: str):
+    """If this turn follows a turn with an unapplied proposal, seed the copy with those changes."""
+    store = service.store
+    m = re.search(r"^PreviousId:\s*(\S+)", raw_goal, re.M)
+    if not m:
+        return None
+    seen = set()
+    curr_id = m.group(1).strip()
+    preview = None
+    while curr_id and curr_id not in seen and len(seen) < 50:
+        seen.add(curr_id)
+        try:
+            prev = store.get(curr_id)
+        except Exception:
+            break
+        if prev.get("status") == "review" and prev.get("proposal_id"):
+            try:
+                cand = service.core.call("changes/inspect", {"id": prev["proposal_id"]})
+                if cand.get("status") in ("pending", "prepared"):
+                    preview = cand
+                    break
+            except Exception:
+                pass
+        if prev.get("status") == "applied":
+            break
+        pm = re.search(r"^PreviousId:\s*(\S+)", prev.get("goal", ""), re.M)
+        curr_id = pm.group(1).strip() if pm else ""
+    if not preview:
+        return None
+    try:
+        for f in preview.get("files") or []:
+            rel = f.get("path", "")
+            if not rel or ".." in Path(rel).parts:
+                continue
+            target = copy / rel
+            after_id = f.get("after_artifact")
+            if not after_id:
+                target.unlink(missing_ok=True)
+            else:
+                chunks, start = [], 1
+                for _ in range(500):
+                    page = service.core.call("artifact/read", {"id": after_id, "start_line": start, "limit": 200})
+                    chunks.append(page.get("content", ""))
+                    if not page.get("truncated"):
+                        break
+                    start += 200
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("".join(chunks), encoding="utf-8")
+        return _workspace_versions(copy)
+    except Exception:
+        return None
+
+
 def run_cli(service, task_id, provider, model, cancelled: threading.Event, effort="", brief=None, read_only=False):
     """Blocking run. Returns final status string."""
     store = service.store
@@ -431,6 +518,7 @@ def run_cli(service, task_id, provider, model, cancelled: threading.Event, effor
         store.event(task_id, "tool_result", {"call_id": "shark-copy"})
         task = store.get(task_id)
         raw_goal = task["goal"]
+        seeded_versions = _seed_previous_proposal(service, copy, raw_goal)
         goal = brief or raw_goal
         if task.get("mode") != "chat":
             store.event(task_id, "tool_call", {"name": "explore code graph", "call_id": "shark-graph", "target": ""})
@@ -473,6 +561,7 @@ def run_cli(service, task_id, provider, model, cancelled: threading.Event, effor
         drain = threading.Thread(target=lambda: [tail.append(l) or len(tail) > 40 and tail.pop(0) for l in process.stderr], daemon=True)
         drain.start()
         final, errored, pending, thoughts = None, False, [], []
+        last_text = None
         quoted = urllib.parse.quote(str(copy))
         prefixes = (f"file://{copy}/", f"file://{quoted}/", f"{copy}/", f"{quoted}/", f"file://{copy}", f"file://{quoted}", str(copy), quoted)
 
@@ -495,6 +584,11 @@ def run_cli(service, task_id, provider, model, cancelled: threading.Event, effor
                 elif kind == "thinking":
                     thoughts = []
                 elif kind == "text":
+                    last_text = data["text"]
+                    pending = []
+                if kind == "tool_call" and pending:
+                    last_text = clean("".join(pending))
+                    store.event(task_id, "text", {"text": last_text})
                     pending = []
                 store.event(task_id, kind, data)
             final = text or final
@@ -502,10 +596,14 @@ def run_cli(service, task_id, provider, model, cancelled: threading.Event, effor
             # Engines that only stream reasoning deltas still get one durable thought.
             store.event(task_id, "thinking", {"text": clean("".join(thoughts))[:6000]})
         final = clean(final)
+        if not pending and final and final != last_text:
+            store.event(task_id, "text", {"text": final})
         if pending:
             # Providers that only stream deltas still get one durable message.
             joined = clean("".join(pending))
-            store.event(task_id, "text", {"text": joined[:6000]})
+            if final and final.startswith(joined):
+                joined = final
+            store.event(task_id, "text", {"text": joined})
             final = final or joined
         code = process.wait()
         drain.join(timeout=2)
@@ -517,7 +615,10 @@ def run_cli(service, task_id, provider, model, cancelled: threading.Event, effor
         if _workspace_versions(root) != base_versions:
             from .core import Fault
             raise Fault("workspace_changed", "Your workspace changed during this run. Candidate edits were not proposed over those changes; retry on the current source.")
-        operations, skipped = diff_operations(service.core, root, copy)
+        if seeded_versions is not None and _workspace_versions(copy) == seeded_versions:
+            operations, skipped = [], []
+        else:
+            operations, skipped = diff_operations(service.core, root, copy)
         if read_only:
             if operations:
                 store.event(task_id, "notice", {"text": f"Read-only mode: discarded {len(operations)} edit(s) the engine made to its private copy."})
@@ -529,7 +630,11 @@ def run_cli(service, task_id, provider, model, cancelled: threading.Event, effor
         if skipped:
             store.event(task_id, "text", {"text": "Skipped non-text or oversized files: " + ", ".join(skipped[:10])})
         if not operations:
-            return "failed" if code != 0 else "completed"
+            if final:
+                task = store.get(task_id)
+                task["summary"] = final.strip()[:2000]
+                store.save(task)
+            return "failed" if code != 0 and not final else "completed"
         label = CLI_PROVIDERS[provider]["label"]
         summary = (final or f"{label} edited {len(operations)} file(s).").strip()[:2000]
         notes = (f"Prepared by {label} in an isolated copy of this workspace. Shark has not run tests. "

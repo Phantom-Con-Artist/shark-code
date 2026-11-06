@@ -27,7 +27,7 @@ const INTEL_CATEGORIES = [
 function ParamField({ spec, value, onChange, theme }: { spec: ParamSpec; value: unknown; onChange(v: unknown): void; theme: string }) {
   const id = `p-${spec.name}`;
   const text = typeof value === 'string' ? value : value === undefined || value === null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value);
-  return <div className="field">
+  return <div className="param-field">
     <label htmlFor={id}>{spec.label}{spec.required && <i aria-hidden> *</i>}</label>
     {spec.kind === 'bool' ? <input id={id} type="checkbox" checked={!!value} onChange={e => onChange(e.target.checked)} />
       : spec.kind === 'select' ? <select id={id} value={text} onChange={e => onChange(e.target.value)}>{spec.options?.map(o => <option key={o}>{o}</option>)}</select>
@@ -49,7 +49,7 @@ function Inspector() {
   useEffect(() => { setResult(null); }, [node?.id]);
   if (!a.graph) return null;
   if (!node || !spec) return <div className="dock-body">
-    <div className="field"><label htmlFor="wf-name">Workflow name</label><input id="wf-name" value={a.graph.name} onChange={e => a.rename(e.target.value)} /></div>
+    <div className="param-field"><label htmlFor="wf-name">Workflow name</label><input id="wf-name" value={a.graph.name} onChange={e => a.rename(e.target.value)} /></div>
     <p className="search-meta">{a.graph.nodes.length} steps · {a.graph.edges.length} connections · saved as automata/{a.graph.id}.automata.json</p>
     {a.validation && [...a.validation.errors.map(m => ['bad', m]), ...a.validation.warnings.map(m => ['warn', m])].map(([k, m], i) => <p key={i} className={`dock-note ${k}`}>{m}</p>)}
     {a.validation?.ok && !a.validation.warnings.length && a.graph.nodes.length > 0 && <p className="dock-note ok"><Check size={12} />Valid. Ready to test.</p>}
@@ -62,15 +62,15 @@ function Inspector() {
   };
   return <div className="dock-body insp">
     <div className="insp-col">
-      <div className="field"><label htmlFor="n-label">Name</label><input id="n-label" value={node.label ?? ''} placeholder={spec.label} onChange={e => a.patchNode(node.id, { label: e.target.value })} /><small>{node.id} · {spec.type}</small></div>
+      <div className="param-field"><label htmlFor="n-label">Name</label><input id="n-label" value={node.label ?? ''} placeholder={spec.label} onChange={e => a.patchNode(node.id, { label: e.target.value })} /><small>{node.id} · {spec.type}</small></div>
       {spec.params.map(p => <ParamField key={p.name} spec={p} theme={theme} value={node.params[p.name] ?? p.default} onChange={v => a.setParam(node.id, p.name, v)} />)}
       <details className="adv"><summary>Retries and errors</summary>
-        <div className="field"><label htmlFor="n-retries">Retries on failure</label><input id="n-retries" type="number" min={0} max={5} value={node.retries ?? 0} disabled={!!spec.effect} onChange={e => a.patchNode(node.id, { retries: Math.min(5, Math.max(0, Number(e.target.value) || 0)) })} /><small>{spec.effect ? 'Steps that change things are never retried automatically.' : 'Waits 1s, 2s, 4s… between attempts.'}</small></div>
-        <div className="field"><label htmlFor="n-err">If it still fails</label><select id="n-err" value={node.on_error ?? 'stop'} onChange={e => a.patchNode(node.id, { on_error: e.target.value as 'stop' | 'continue' })}><option value="stop">Stop the run</option><option value="continue">Continue with the error</option></select></div>
+        <div className="param-field"><label htmlFor="n-retries">Retries on failure</label><input id="n-retries" type="number" min={0} max={5} value={node.retries ?? 0} disabled={!!spec.effect} onChange={e => a.patchNode(node.id, { retries: Math.min(5, Math.max(0, Number(e.target.value) || 0)) })} /><small>{spec.effect ? 'Steps that change things are never retried automatically.' : 'Waits 1s, 2s, 4s… between attempts.'}</small></div>
+        <div className="param-field"><label htmlFor="n-err">If it still fails</label><select id="n-err" value={node.on_error ?? 'stop'} onChange={e => a.patchNode(node.id, { on_error: e.target.value as 'stop' | 'continue' })}><option value="stop">Stop the run</option><option value="continue">Continue with the error</option></select></div>
       </details>
     </div>
     <div className="insp-col">
-      <div className="field"><label htmlFor="n-sample">Test input (JSON)</label><textarea id="n-sample" className="mono" rows={2} value={sample} onChange={e => setSample(e.target.value)} spellCheck={false} /></div>
+      <div className="param-field"><label htmlFor="n-sample">Test input (JSON)</label><textarea id="n-sample" className="mono" rows={2} value={sample} onChange={e => setSample(e.target.value)} spellCheck={false} /></div>
       <button className="btn" onClick={() => void test()}><FlaskConical size={13} />Test this step</button>
       <small className="muted">Tests are dry: files are not written, commands are not run, only GET requests are sent.</small>
       {result?.id === node.id && <div className={`dock-note ${result.r.ok ? 'ok' : 'bad'}`}>{result.r.ok ? `Passed in ${result.r.seconds}s${result.r.port ? ` · output ${result.r.port}` : ''}` : result.r.error}<pre>{result.r.ok ? pretty(result.r.output) : ''}</pre>{result.r.logs && <pre>{result.r.logs}</pre>}</div>}

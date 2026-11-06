@@ -37,7 +37,7 @@ export async function request<T>(method: string, params: object = {}): Promise<T
   if (response.error) throw new BackendError(response.error.code, response.error.message);
   return response.result as T;
 }
-export const EXPECTED_RUNTIME = 9;
+export const EXPECTED_RUNTIME = 11;
 export const restartBackend = () => invoke('backend_restart');
 export const sharkBackend = {
   capabilities: () => request<Record<string, unknown>>('capabilities'),

@@ -11,7 +11,7 @@ from .codebase import Codebase
 from .codebase.gateway import OPERATIONS, dispatch as intelligence_dispatch
 
 # Bump when the app depends on new runtime methods or parameters; the UI offers a restart if older.
-RUNTIME_VERSION = 9
+RUNTIME_VERSION = 11
 CORE_TOOLS = {"workspace/list", "workspace/snapshot", "file/read", "code/search", "code/outline",
     "artifact/read", "cache/stats", "changes/preview", "changes/apply", "changes/revert",
     "changes/pending", "changes/recover", "changes/inspect"}
