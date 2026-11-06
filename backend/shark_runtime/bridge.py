@@ -15,9 +15,12 @@ import socketserver
 import sys
 import threading
 from pathlib import Path
+from .codebase.gateway import READ_ONLY
 
-ALLOWED = {"graph/query", "graph/impact", "workspace/context", "code/search", "code/outline", "cache/stats",
+ALLOWED = {"tools/detect", "tools/analyze", "graph/query", "graph/impact", "workspace/context", "code/search", "code/outline", "cache/stats",
            "git/status", "git/log", "git/diff", "deps/list", "browser/check", "browser/locate"}
+
+ALLOWED |= READ_ONLY | {"file/read", "workspace/list", "workflow/ask"}
 
 
 class _Server(socketserver.ThreadingMixIn, http.server.HTTPServer):

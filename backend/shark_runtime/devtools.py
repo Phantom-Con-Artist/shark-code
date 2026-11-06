@@ -43,29 +43,31 @@ def _probe():
             except (OSError, subprocess.SubprocessError):
                 continue
             if out.returncode == 0 and (not tool["expect"] or tool["expect"].lower() in text.lower()):
-                found[tool["id"]] = {"binary": binary, "version": text[:80]}
+                found[tool["id"]] = {"binary": binary, "path": path, "version": text[:80]}
                 break
     return found
 
 
 def detect(root: Path) -> dict:
     found = _probe()
-    tools = []
+    from .intelligence import BUILTINS, EXTERNAL
+    tools = [{**t, "available": True, "builtin": True, "version": "Shark runtime", "install": "", "tasks": [], "callable": True} for t in BUILTINS]
     for t in TOOLS:
         hit = found.get(t["id"])
         tasks = [{"label": l, "command": c.replace("ast-grep ", f"{hit['binary']} ", 1) if hit else c} for l, c in t["tasks"]]
         tools.append({"id": t["id"], "label": t["label"], "purpose": t["purpose"], "available": bool(hit),
-                      "version": hit["version"] if hit else None, "install": t["install"], "tasks": tasks})
-    if (root / "package.json").is_file() and which("npx"):
+                      "version": hit["version"] if hit else None, "install": t["install"], "tasks": tasks, "builtin": False, "callable": t["id"] in EXTERNAL})
+    if (root / "package.json").is_file() and which("knip"):
         tools.append({"id": "knip", "label": "knip", "purpose": "Unused files, exports and dependencies (JS/TS)", "available": True,
-                      "version": "via npx", "install": "", "tasks": [{"label": "Find unused code", "command": "npx --yes knip"}]})
+                      "version": "installed", "install": "", "tasks": [{"label": "Find unused code", "command": "knip"}]})
     return {"tools": tools}
 
 
 def agent_note() -> str:
     """One line for engine briefs: which verified tools the agent can rely on."""
     found = _probe()
+    note = "\nSHARK STATIC ANALYSIS: tools/detect lists analyzers; tools/analyze runs built-in python-syntax and code-stats, or installed ast-grep, semgrep, scc and ctags. Use the Shark analysis tools for results."
     if not found:
-        return ""
+        return note
     names = {t["id"]: f"{found[t['id']]['binary']} ({t['purpose'].lower()})" for t in TOOLS if t["id"] in found}
-    return "\nDEVELOPER TOOLS AVAILABLE ON THIS MACHINE: " + "; ".join(names.values()) + "."
+    return note + "\nDEVELOPER TOOLS AVAILABLE ON THIS MACHINE: " + "; ".join(names.values()) + "."

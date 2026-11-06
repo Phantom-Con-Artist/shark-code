@@ -60,10 +60,29 @@ You can run the same request on several engines at once from the mode menu ("Als
 - Context fill, prompt cache use, compaction and provider retries shown next to the chat box and in the thread.
 - Clear errors for quota, rate limits, sign-in, network and full context, each with a next step.
 
+**Durable workflows**
+- Multi-step plans keep a private candidate, checkpoints, evidence and bounded context across engine invocations.
+- Pause, continue, retry failed steps, answer questions and stop from the conversation.
+- Configured checks run in the candidate. Failed checks can trigger bounded repairs; changes invalidate earlier passing checks.
+- Final source application still requires human review. Restarted runs resume explicitly from saved checkpoints.
+- See [orchestration](docs/architecture/orchestration.md) for APIs, budgets and execution limits.
+
 **Code intelligence**
 - Code graph built from your source, used to give engines relevant code before they start.
 - Blast radius: see what depends on a file before you or the agent change it.
-- CLI engines get Shark's tools live through an MCP server: graph search, impact, text search, outlines, git status and page checks.
+- CLI engines get Shark's tools live through an MCP server: graph search, impact, text search, outlines, git status, static analysis and page checks. API engines use the same analysis API.
+- Built-in Python syntax checks and code statistics work without installing extra tools. Installed ast-grep, Semgrep, scc and Universal Ctags are callable by engines, with availability reported by `tools/detect`.
+- Analysis uses the current workspace. External scans use a disposable source snapshot, bounded to 16 MiB, with a 60-second timeout and bounded output. Results report skipped files and truncation. Semgrep uses a bundled offline dynamic-eval rule; this is a focused check, not a full security audit.
+
+**Built-in project intelligence**
+- A persistent local index with bundled syntax grammars, symbols, imports, environment references, configuration inventory and ranked text retrieval.
+- Manifest/lockfile inventory, relative-import dependencies, cycles, coupling, reverse impact paths and test suggestions.
+- Explainable quality metrics, redacted security review candidates, declarative architecture rules and Git churn/co-change reports.
+- Revision-bound reports shared by CLI engines, API engines and the desktop API. Large reports remain available as paginated artifacts.
+- CLI tools inspect their own candidate copy. Candidate evidence is retained, and concurrent user edits prevent proposal creation.
+- Release builds include Chromium and run a bundled component self-check.
+
+The full ten-category intelligence specification is **not complete**. See [core capability status](docs/architecture/core-capability-status.md) for supported behavior and remaining work. `intelligence/status` reports current coverage and limitations; no clean scan is presented as proof of security or runtime correctness.
 
 **Editor**
 - Monaco with tabs, breadcrumbs and a command palette.
@@ -108,7 +127,7 @@ npm run backend:setup     # Python runtime + Rust core
 npm run tauri dev
 ```
 
-Optional, for page checks:
+For page checks when running from source (release builds bundle Chromium):
 
 ```sh
 uv run --project backend playwright install chromium

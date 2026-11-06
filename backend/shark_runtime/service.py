@@ -7,17 +7,23 @@ from pathlib import Path
 from .core import Core, Fault, WorkspaceLease
 from .graph import Graph, bounded
 from .store import Store
+from .codebase import Codebase
+from .codebase.gateway import OPERATIONS, dispatch as intelligence_dispatch
 
 # Bump when the app depends on new runtime methods or parameters; the UI offers a restart if older.
-RUNTIME_VERSION = 4
+RUNTIME_VERSION = 6
 CORE_TOOLS = {"workspace/list", "workspace/snapshot", "file/read", "code/search", "code/outline",
     "artifact/read", "cache/stats", "changes/preview", "changes/apply", "changes/revert",
     "changes/pending", "changes/recover", "changes/inspect"}
 APP_TOOLS = {"workspace/context", "graph/index", "graph/query", "graph/impact", "changes/analyze",
     "task/create", "task/list", "task/get", "task/context", "task/propose", "task/apply", "task/events",
     "agent/start", "agent/cancel", "agent/providers", "agent/commands", "agent/models", "agent/modes",
-    "git/status", "git/diff", "git/log", "git/stage", "git/unstage", "git/commit", "git/branches", "git/checkout", "git/sync", "deps/list", "tools/detect",
+    "git/status", "git/diff", "git/log", "git/stage", "git/unstage", "git/commit", "git/branches", "git/checkout", "git/sync", "deps/list", "tools/detect", "tools/analyze",
     "browser/serve", "browser/locate", "browser/check", "lsp/start", "lsp/request", "lsp/notify", "lsp/poll"}
+
+
+APP_TOOLS |= {"intelligence/" + operation for operation in OPERATIONS}
+APP_TOOLS |= {"workflow/" + operation for operation in ("create", "get", "step", "start", "resume", "pause", "cancel", "respond", "replan", "ask")}
 
 
 class Service:
@@ -28,7 +34,10 @@ class Service:
             self.lease = WorkspaceLease(self.core.root)
             self.graph = Graph(self.core)
             self.store = Store(self.core.root / ".shark")
+            self.intelligence = Codebase(self.core, self.store)
         except BaseException:
+            if getattr(self, "store", None) is not None:
+                self.store.close()
             if self.lease:
                 self.lease.close()
             self.core.close()
@@ -36,6 +45,9 @@ class Service:
         self.workflow_lock = threading.RLock()
         self.agent = None
         self.bridge = None
+        self.orchestrator = None
+        self.human_request = None
+        self.git_disabled = False
 
     def execute(self, method: str, p: dict):
         if method == "capabilities":
@@ -45,8 +57,13 @@ class Service:
                 "agent_runtime": "google-adk", "cli_adapters": ["claude-code", "codex"], "persisted_tasks": True, "persisted_sessions": True,
                 "agent_can_apply": False, "shell_execution": False}
             result["analysis"]["dependency_graph"] = True
+            result["analysis"]["builtin_intelligence"] = {"schema": "shark-codebase-v1", "status_method": "intelligence/status", "categories": 10}
             result["analysis"]["resolution"] = "graphify_static_with_confidence"
             return result
+        if method.startswith("workflow/"):
+            return self.workflow_method(method, p)
+        if method.startswith("intelligence/"):
+            return intelligence_dispatch(self.intelligence, method, p)
         if method in CORE_TOOLS:
             return self.core.call(method, p)
         if method == "graph/index":
@@ -79,6 +96,14 @@ class Service:
                      "available": True, "env_configured": check()} for k, check in BYOK_PROVIDERS.items()]
             return {"providers": byok + discover()}
         if method.startswith("git/"):
+            if self.git_disabled:
+                if method == "git/status":
+                    return {"repo": False, "branch": None, "files": [], "reason": "Private candidate has no repository metadata"}
+                if method == "git/log":
+                    return {"commits": [], "reason": "Private candidate has no repository metadata"}
+                if method == "git/diff":
+                    return {"diff": "", "truncated": False, "reason": "Use the candidate proposal diff"}
+                raise Fault("invalid_state", "Git mutations are not available through candidate tools")
             from . import git
             root = self.core.root
             if method == "git/status":
@@ -101,6 +126,12 @@ class Service:
                 self.fields(p, {"action"})
                 with self.workflow_lock:
                     return git.sync(root, p["action"])
+        if method == "tools/analyze":
+            self.fields(p, {"tool"}, {"pattern", "language"})
+            from .intelligence import analyze
+            if not isinstance(p["tool"], str):
+                raise Fault("invalid_params", "tool must be a string")
+            return analyze(self.core, **p)
         if method == "tools/detect":
             self.fields(p)
             from .devtools import detect
@@ -190,6 +221,8 @@ class Service:
                                     p.get("provider", "gemini"), p.get("api_key") or None, p.get("effort", ""),
                                     p.get("mode", "builder"), p.get("skills", []), p.get("custom_skills", []), p.get("group"))
         if method == "agent/cancel":
+            if task.get("workflow_id"):
+                return self.workflow_method("workflow/cancel", {"id": task["workflow_id"]})
             if self.agent is None:
                 raise Fault("not_running", "This task has no active invocation")
             return self.agent.cancel(task["id"])
@@ -223,11 +256,47 @@ class Service:
                 return {"task": task, "proposal": preview, "graph_refresh": "on_next_query"}
         raise Fault("unknown_method", method)
 
+    def workflow_method(self, method, p):
+        if method == "workflow/ask":
+            self.fields(p, {"question"})
+            if self.human_request is None:
+                raise Fault("invalid_state", "This engine is not part of a durable workflow")
+            return self.human_request(p["question"])
+        with self.workflow_lock:
+            if self.orchestrator is None:
+                from .orchestration import Orchestrator
+                self.orchestrator = Orchestrator(self)
+        controller = self.orchestrator
+        if method == "workflow/create":
+            self.fields(p, {"goal"}, {"steps", "run", "budget", "checks"})
+            return controller.create(**p)
+        if method == "workflow/get":
+            self.fields(p, {"id"}, {"offset", "limit"})
+            return controller.get(p["id"], p.get("offset", 0), p.get("limit", 32))
+        if method == "workflow/step":
+            self.fields(p, {"id", "step_id"})
+            return controller.step(p["id"], p["step_id"])
+        if method in {"workflow/start", "workflow/resume"}:
+            self.fields(p, {"id"}, {"api_key", "retry_failed"})
+            return controller.start(p["id"], p.get("api_key"), method == "workflow/resume", p.get("retry_failed", False))
+        if method in {"workflow/pause", "workflow/cancel"}:
+            self.fields(p, {"id"})
+            return controller.control(p["id"], method.split("/")[1])
+        if method == "workflow/respond":
+            self.fields(p, {"id", "gate_id", "decision"}, {"answer"})
+            return controller.respond(p["id"], p["gate_id"], p["decision"], p.get("answer", ""))
+        if method == "workflow/replan":
+            self.fields(p, {"id", "expected_version", "steps"})
+            return controller.replan(p["id"], p["expected_version"], p["steps"])
+        raise Fault("unknown_method", method)
+
     def close(self):
+        if self.orchestrator is not None:
+            self.orchestrator.close()
         if self.agent is not None:
             self.agent.close()
         from . import browser, lsp
-        browser.close()
+        browser.close(self.core.root)
         lsp.close_all(self)
         if getattr(self, "bridge", None) is not None:
             self.bridge.close()

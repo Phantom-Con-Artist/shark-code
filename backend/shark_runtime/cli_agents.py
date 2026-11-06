@@ -10,6 +10,7 @@ mode still governs what else it can touch.
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import os
 import shutil
@@ -18,6 +19,7 @@ import tempfile
 import threading
 import urllib.parse
 from pathlib import Path
+from .processes import group_options, terminate
 
 SKIP_DIRS = {".git", ".shark", "node_modules", "target", "dist", "build", ".venv", "venv",
              "__pycache__", ".next", ".turbo", ".cache", "binaries", ".playwright-mcp", ".taste-skill", ".impeccable"}
@@ -101,7 +103,7 @@ def _run_dir() -> Path:
 
 AGY_PLUGIN = ".agents/plugins/shark"
 SHARK_TOOLS_NOTE = ("\n\nSHARK TOOLS (MCP server 'shark'): shark_graph (find symbols and how they connect), shark_impact "
-                    "(blast radius before changing shared code), shark_search, shark_outline, shark_git, shark_check_page "
+                    "(blast radius before changing shared code), shark_search, shark_outline, shark_git, shark_project (built-in project intelligence), shark_check_page "
                     "(load a local page in headless Chromium and report console errors). Prefer them over broad file scans.")
 LINK_DIRS = {"node_modules", ".venv", "venv"}
 
@@ -149,6 +151,17 @@ def _read_text(path: Path):
         return data.decode("utf-8")
     except (OSError, UnicodeDecodeError):
         return None
+
+
+
+def _workspace_versions(root: Path) -> dict:
+    """Content identities for files that can participate in a CLI proposal."""
+    result = {}
+    for relative, path in _text_files(root).items():
+        text = _read_text(path)
+        if text is not None:
+            result[relative] = hashlib.sha256(text.encode()).hexdigest()
+    return result
 
 
 def diff_operations(core, original: Path, copy: Path):
@@ -404,8 +417,15 @@ def run_cli(service, task_id, provider, model, cancelled: threading.Event, effor
     workdir = Path(tempfile.mkdtemp(prefix="shark-cli-", dir=_run_dir()))
     copy = workdir / root.name
     process = None
+    candidate_service = None
+    watcher_finished = threading.Event()
+    stop = None
     try:
+        base_versions = _workspace_versions(root)
         shutil.copytree(root, copy, ignore=_ignore, symlinks=False)
+        if _workspace_versions(root) != base_versions:
+            from .core import Fault
+            raise Fault("workspace_changed", "Workspace changed while capturing the run; retry")
         link_dependencies(root, copy)
         store.event(task_id, "tool_call", {"name": "isolated workspace copy", "call_id": "shark-copy", "target": ""})
         store.event(task_id, "tool_result", {"call_id": "shark-copy"})
@@ -415,11 +435,17 @@ def run_cli(service, task_id, provider, model, cancelled: threading.Event, effor
         store.event(task_id, "tool_result", {"call_id": "shark-graph", "found": found})
         from .devtools import agent_note
         goal = (brief or raw_goal) + context + agent_note()
-        mcp, env = None, None
+        mcp = None
+        env = {**os.environ, "GIT_CEILING_DIRECTORIES": str(copy.parent)}
         try:
             from .bridge import mcp_launch
-            mcp = mcp_launch(service)
-            env = {**os.environ, **mcp["env"]}
+            from .service import Service
+            candidate_service = Service(copy, service.core.binary)
+            candidate_service.intelligence.context_id = task_id
+            candidate_service.human_request = getattr(service, "human_request", None)
+            candidate_service.git_disabled = True
+            mcp = mcp_launch(candidate_service)
+            env.update(mcp["env"])
             if provider == "antigravity":  # agy loads MCP servers from workspace plugins, not flags
                 plugin = copy / AGY_PLUGIN
                 plugin.mkdir(parents=True, exist_ok=True)
@@ -431,8 +457,13 @@ def run_cli(service, task_id, provider, model, cancelled: threading.Event, effor
             mcp = None
         process = subprocess.Popen(command_for(provider, goal, model, effort, read_only, None if provider == "antigravity" else mcp),
                                    cwd=copy, stdin=subprocess.DEVNULL, env=env,
-                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
-        stop = threading.Thread(target=lambda: (cancelled.wait(), process.poll() is None and process.terminate()), daemon=True)
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, **group_options())
+        def watch_stop():
+            while not watcher_finished.wait(0.1):
+                if cancelled.is_set():
+                    terminate(process)
+                    return
+        stop = threading.Thread(target=watch_stop, daemon=True)
         stop.start()
         tail: list[str] = []
         drain = threading.Thread(target=lambda: [tail.append(l) or len(tail) > 40 and tail.pop(0) for l in process.stderr], daemon=True)
@@ -479,6 +510,9 @@ def run_cli(service, task_id, provider, model, cancelled: threading.Event, effor
         if code != 0 and not errored:
             hint = " ".join(l.strip() for l in tail[-3:])[:400]
             store.event(task_id, "error", {"code": f"exit_{code}", "message": hint or f"{CLI_PROVIDERS[provider]['label']} exited with status {code}. Check that it is signed in."})
+        if _workspace_versions(root) != base_versions:
+            from .core import Fault
+            raise Fault("workspace_changed", "Your workspace changed during this run. Candidate edits were not proposed over those changes; retry on the current source.")
         operations, skipped = diff_operations(service.core, root, copy)
         if read_only:
             if operations:
@@ -499,9 +533,53 @@ def run_cli(service, task_id, provider, model, cancelled: threading.Event, effor
         service.execute("task/propose", {"id": task_id, "changes": operations, "summary": summary, "review_notes": notes})
         return "review"
     finally:
-        if process and process.poll() is None:
-            process.kill()
+        watcher_finished.set()
+        if process:
+            terminate(process, descendants=True)
+        if stop is not None:
+            stop.join(timeout=3)
+        if candidate_service is not None:
+            try:
+                # Retain candidate evidence after the disposable root is removed.
+                retain_evidence(service, candidate_service, task_id)
+            finally:
+                candidate_service.close()
         shutil.rmtree(workdir, ignore_errors=True)
+
+
+
+def retain_evidence(target, candidate, task_id):
+    source_artifacts = candidate.core.root / ".shark" / "artifacts"
+    for artifact in source_artifacts.iterdir():
+        if not re.fullmatch(r"source-[a-f0-9]{64}", artifact.name):
+            continue
+        # The native reader verifies the content-addressed source identity.
+        candidate.core.call("artifact/read", {"id": artifact.name, "limit": 1})
+        if artifact.is_symlink() or artifact.stat().st_size > MAX_FILE:
+            raise RuntimeError("Invalid candidate source artifact")
+        destination = target.core.root / ".shark" / "artifacts" / artifact.name
+        if destination.exists():
+            target.core.call("artifact/read", {"id": artifact.name, "limit": 1})
+        else:
+            with tempfile.NamedTemporaryFile(dir=destination.parent, delete=False) as output:
+                temporary = Path(output.name)
+                try:
+                    output.write(artifact.read_bytes())
+                    output.flush()
+                    os.fsync(output.fileno())
+                except BaseException:
+                    temporary.unlink(missing_ok=True)
+                    raise
+            try:
+                os.replace(temporary, destination)
+            finally:
+                temporary.unlink(missing_ok=True)
+    with candidate.store.lock:
+        reports = candidate.store.db.execute("SELECT id,revision,kind,body FROM intelligence_reports").fetchall()
+    with target.store.lock, target.store.db:
+        target.store.db.executemany("INSERT OR IGNORE INTO intelligence_reports VALUES(?,?,?,?)", reports)
+    for identity, revision, kind, _ in reports:
+        target.store.event(task_id, "intelligence_evidence", {"artifact_id": identity, "revision": revision, "kind": kind})
 
 
 def _frontmatter(text):

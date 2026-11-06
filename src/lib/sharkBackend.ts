@@ -37,7 +37,7 @@ async function request<T>(method: string, params: object = {}): Promise<T> {
   if (response.error) throw new BackendError(response.error.code, response.error.message);
   return response.result as T;
 }
-export const EXPECTED_RUNTIME = 4;
+export const EXPECTED_RUNTIME = 6;
 export const restartBackend = () => invoke('backend_restart');
 export const sharkBackend = {
   capabilities: () => request<Record<string, unknown>>('capabilities'),
@@ -72,9 +72,9 @@ export interface ImpactReport {
   coverage: Record<string, unknown>; truncated: boolean; analysis: string;
 }
 export interface AgentTask {
-  id: string; goal: string; summary?: string | null; review_notes?: string | null; status: 'created' | 'running' | 'review' | 'applied' | 'completed' | 'cancelled' | 'interrupted' | 'failed';
+  id: string; goal: string; summary?: string | null; review_notes?: string | null; status: 'created' | 'running' | 'review' | 'applied' | 'completed' | 'cancelled' | 'interrupted' | 'failed' | 'paused' | 'waiting_human' | 'blocked';
   proposal_id: string | null; proposal_revision: string | null; created_at: number; proposal_status?: ChangePreview['status'];
-  engine?: string; mode?: string; model?: string; group?: string | null;
+  engine?: string; mode?: string; model?: string; group?: string | null; workflow_id?: string;
 }
 export interface ProviderStatus { id: string; label: string; kind: 'byok' | 'cli'; available: boolean; env_configured?: boolean; installed?: boolean; reason?: string }
 export interface SlashCommand { name: string; provider: string; scope: string; kind: 'native' | 'prompt'; description: string; argument_hint: string; body?: string }
@@ -85,6 +85,38 @@ export interface TaskEvent {
 // impact evidence and the native changeset rather than keeping parallel state.
 export type GitFile = { path: string; staged: boolean; index: string; worktree: string; status: string };
 export type GitStatus = { repo: boolean; branch: string | null; ahead?: number; behind?: number; files: GitFile[] };
+export type StaticAnalyzer = 'python-syntax' | 'code-stats' | 'ast-grep' | 'semgrep' | 'scc' | 'ctags';
+export interface StaticAnalysisResult {
+  tool: StaticAnalyzer;
+  status: 'completed' | 'unavailable' | 'timeout' | 'failed';
+  message?: string;
+  findings?: { path: string; line: number | null; column: number | null; message: string }[];
+  statistics?: Record<string, { files: number; bytes: number; lines: number }>;
+  output?: string;
+  stderr?: string;
+  exit_code?: number;
+  skipped?: string[];
+  skipped_count?: number;
+  partial?: boolean;
+  truncated?: boolean;
+  bytes_analyzed?: number;
+  path_prefix?: string;
+}
+export interface IntelligenceReport {
+  schema: string; context_id: string; revision: string; kind: string; source_manifest_artifact_id: string | null;
+  provider: { id: string; version: string }; status: 'completed' | 'partial';
+  coverage: Record<string, unknown>; data: Record<string, unknown>; artifact_id: string; truncated: boolean;
+}
+export type IntelligenceOperation = 'status' | 'index' | 'structure' | 'search' | 'explain' | 'dependencies' |
+  'impact' | 'quality' | 'security' | 'architecture' | 'history' | 'runtime' | 'context';
+export const sharkIntelligence = {
+  project: (operation: IntelligenceOperation, params: Record<string, unknown> = {}) =>
+    request<IntelligenceReport>('intelligence/' + operation, params),
+  artifact: (id: string, section?: string, offset = 0, limit = 50) =>
+    request<Record<string, unknown>>('intelligence/artifact', { id, ...(section ? { section } : {}), offset, limit }),
+  analyze: (tool: StaticAnalyzer, options: { pattern?: string; language?: string } = {}) =>
+    request<StaticAnalysisResult>('tools/analyze', { tool, ...options }),
+};
 export const sharkGit = {
   status: () => request<GitStatus>('git/status'),
   diff: (path?: string, staged = false) => request<{ diff: string; truncated: boolean }>('git/diff', { ...(path ? { path } : {}), staged }),
@@ -92,7 +124,7 @@ export const sharkGit = {
   stage: (paths: string[]) => request<GitStatus>('git/stage', { paths }),
   unstage: (paths: string[]) => request<GitStatus>('git/unstage', { paths }),
   commit: (message: string) => request<{ commit: { short: string; subject: string }; status: GitStatus }>('git/commit', { message }),
-  tools: () => request<{ tools: { id: string; label: string; purpose: string; available: boolean; version: string | null; install: string; tasks: { label: string; command: string }[] }[] }>('tools/detect'),
+  tools: () => request<{ tools: { id: string; label: string; purpose: string; available: boolean; builtin?: boolean; callable?: boolean; version: string | null; install: string; tasks: { label: string; command: string }[] }[] }>('tools/detect'),
   branches: () => request<{ branches: { name: string; current: boolean }[] }>('git/branches'),
   checkout: (name: string, create = false) => request<GitStatus>('git/checkout', { name, create }),
   sync: (action: 'fetch' | 'pull' | 'push') => request<{ output: string; status: GitStatus }>('git/sync', { action }),
@@ -112,6 +144,31 @@ export const sharkLsp = {
   request: <T = unknown>(language: string, method: string, params: unknown, timeout?: number) => request<{ result: T }>('lsp/request', { language, method, params, ...(timeout ? { timeout } : {}) }).then(r => r.result),
   notify: (language: string, method: string, params: unknown) => request<{ ok: boolean }>('lsp/notify', { language, method, params }),
   poll: () => request<{ diagnostics: Record<string, { range: { start: { line: number; character: number }; end: { line: number; character: number } }; severity?: number; message: string; source?: string; code?: string | number }[]> }>('lsp/poll', {}),
+};
+export interface WorkflowStep {
+  id: string; kind: 'agent' | 'intelligence' | 'check' | 'human'; title: string;
+  depends_on: string[]; status: string; attempts: number; summary: string; artifact_id?: string;
+  exit_code?: number; repairs: number;
+}
+export interface Workflow {
+  id: string; task_id: string; status: string; version: number; goal: string;
+  steps: WorkflowStep[]; step_count: number; next_step_offset: number | null;
+  gate: { id: string; kind: 'question' | 'approval'; question: string; step_id?: string } | null;
+  attempts: number; agent_runs: number; active_seconds: number; summary: string;
+  budget: { max_attempts: number; max_agent_runs: number; max_active_seconds: number };
+}
+export const sharkWorkflows = {
+  create: (goal: string, run: Record<string, unknown>, steps?: Record<string, unknown>[]) =>
+    request<{ workflow: Workflow; task: AgentTask }>('workflow/create', { goal, run, ...(steps ? { steps } : {}) }),
+  get: (id: string, offset = 0) => request<Workflow>('workflow/get', { id, offset }),
+  start: (id: string, apiKey?: string) => request<Workflow>('workflow/start', { id, ...(apiKey ? { api_key: apiKey } : {}) }),
+  resume: (id: string, apiKey?: string, retryFailed = false) =>
+    request<Workflow>('workflow/resume', { id, retry_failed: retryFailed, ...(apiKey ? { api_key: apiKey } : {}) }),
+  pause: (id: string) => request<Workflow>('workflow/pause', { id }),
+  cancel: (id: string) => request<Workflow>('workflow/cancel', { id }),
+  respond: (id: string, gateId: string, decision: 'answer' | 'approve' | 'reject', answer = '') =>
+    request<Workflow>('workflow/respond', { id, gate_id: gateId, decision, answer }),
+  step: (id: string, stepId: string) => request<Record<string, unknown>>('workflow/step', { id, step_id: stepId }),
 };
 export const sharkWorkspace = {
   tasks: () => request<{ tasks: AgentTask[]; has_more: boolean }>('task/list'),

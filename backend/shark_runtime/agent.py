@@ -32,7 +32,7 @@ Graph edges are static evidence, not proof of runtime behavior. Explain uncertai
 Use propose_changes for surgical multi-file edits with versions from read_file.
 A proposal is awaiting host review; you cannot apply changes or execute a shell.
 When a proposal is ready, explain its behavior, risks and suggested validation.
-Do not claim tests were run: this runtime does not yet expose validation execution.
+Validation is owned by the workflow host. Cite recorded check results; never infer a pass.
 """
 
 
@@ -42,6 +42,7 @@ class AgentHost:
         self.model_factory = model_factory
         self.lock = threading.RLock()
         self.active = {}
+        self.closed = False
         self.loop = asyncio.new_event_loop()
         self.thread = threading.Thread(target=self.loop.run_forever, daemon=True, name="shark-adk")
         self.thread.start()
@@ -69,6 +70,8 @@ class AgentHost:
         if provider in BYOK_PROVIDERS and self.model_factory is None and not api_key and not BYOK_PROVIDERS[provider]():
             raise Fault("model_unconfigured", "Add an API key in Settings → Agents, or set it in the backend environment")
         with self.lock:
+            if self.closed:
+                raise Fault("invalid_state", "Agent host is closed")
             if task_id in self.active:
                 raise Fault("agent_busy", "This chat is already running")
             if len(self.active) >= MAX_CONCURRENT:
@@ -195,7 +198,43 @@ class AgentHost:
             url = path_or_url if target else served["base"] + "/" + path_or_url.lstrip("/")
             return await invoke("browser/check", {"url": url})
 
-        tools = [explore, read_file, search_code, assess_impact, outline, check_page]
+        async def static_tools() -> dict:
+            """List built-in and installed static analyzers, availability and setup instructions."""
+            return await invoke("tools/detect", {})
+
+        async def analyze_code(tool: str, pattern: str = "", language: str = "") -> dict:
+            """Run python-syntax, code-stats, ast-grep, semgrep, scc or ctags on current source.
+            ast-grep requires pattern and language. Results never apply edits. Semgrep uses
+            Shark's offline eval rule; it is a focused check, not a comprehensive security audit.
+            """
+            return await invoke("tools/analyze", {"tool": tool, "pattern": pattern, "language": language})
+
+        async def project_intelligence(operation: str, parameters_json: str = "{}") -> dict:
+            """Built-in project intelligence. Read operations: status, structure, search(query),
+            explain(path), dependencies, impact(paths), quality, security, architecture,
+            history, runtime, context(query), artifact(id, section, offset). Results include
+            source revision, evidence and coverage limits. Security matches need review.
+            Retrieval is ranked lexical, not embedding search. Runtime requires observations.
+            """
+            from .codebase.gateway import READ_ONLY
+            method = "intelligence/" + operation
+            if method not in READ_ONLY:
+                return {"error": {"code": "invalid_params", "message": "Choose a read-only intelligence operation"}}
+            try:
+                params = json.loads(parameters_json)
+            except ValueError:
+                return {"error": {"code": "invalid_json", "message": "Expected a JSON object"}}
+            return await invoke(method, params)
+
+        async def request_human_input(question: str) -> dict:
+            """Park this workflow for a missing human decision. Stop after requesting input;
+            the host resumes from a checkpoint with the person's answer. Do not invent approval.
+            """
+            return await invoke("workflow/ask", {"question": question})
+
+        tools = [project_intelligence, static_tools, analyze_code, explore, read_file, search_code, assess_impact, outline, check_page]
+        if getattr(service, "human_request", None) is not None:
+            tools.append(request_human_input)
         return tools if read_only else tools + [propose_changes]
 
     async def run(self, task_id, model, cancelled, provider="gemini", api_key=None, effort="", brief=None, read_only=False):
@@ -282,6 +321,8 @@ class AgentHost:
 
     def close(self):
         with self.lock:
+            if self.closed:
+                return
             active = list(self.active.values())
             for _, cancelled in active:
                 cancelled.set()
@@ -289,8 +330,13 @@ class AgentHost:
             # Wait for in-flight tool calls to settle before closing the source authority.
             try:
                 future.result(timeout=30)
+            except TimeoutError:
+                raise Fault("agent_busy", "An in-flight tool is still settling; its workspace authority must remain open") from None
             except Exception:
                 pass
         self.loop.call_soon_threadsafe(self.loop.stop)
         self.thread.join(timeout=3)
+        if self.thread.is_alive():
+            raise Fault("agent_busy", "Agent event loop is still stopping")
         self.loop.close()
+        self.closed = True

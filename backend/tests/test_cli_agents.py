@@ -1,5 +1,6 @@
 """CLI adapter: a fake `claude` binary edits an isolated copy; Shark imports it as a proposal."""
 import os
+import sys
 import stat
 import tempfile
 import time
@@ -64,6 +65,66 @@ class CliAdapterTests(unittest.TestCase):
         self.service.close()
         self.path.stop()
         self.tmp.cleanup()
+
+    def test_mcp_inspects_candidate_and_retains_its_evidence(self):
+        script = Path(self.tmp.name) / 'bin' / 'muse'
+        script.write_text("#!" + str(Path(sys.executable).resolve()) + "\n" + r"""
+import json, os, urllib.request
+from pathlib import Path
+p=Path('math.ts')
+p.write_text(p.read_text().replace('add(', 'candidate('))
+request=urllib.request.Request(os.environ['SHARK_BRIDGE_URL'],
+    data=json.dumps({'method':'intelligence/explain','params':{'path':'math.ts'}}).encode(),
+    headers={'Authorization':'Bearer '+os.environ['SHARK_BRIDGE_TOKEN']})
+with urllib.request.urlopen(request) as response:
+    report=json.load(response)['result']
+assert any(s['name']=='candidate' for s in report['data']['symbols']), report
+print(json.dumps({'payload_type':'run.output.delta','payload':{'text':'Candidate inspected.'}}))
+""")
+        script.chmod(script.stat().st_mode | stat.S_IEXEC)
+        task=self.service.execute('task/create',{'goal':'Inspect the candidate'})
+        host=AgentHost(self.service)
+        self.service.agent=host
+        host.start(task['id'],'','muse')
+        end=time.monotonic()+20
+        while host.active and time.monotonic()<end:
+            time.sleep(0.02)
+        result=self.service.store.get(task['id'])
+        self.assertEqual(result['status'],'review',self.service.store.events(task['id']))
+        self.assertIn('add(', (self.root/'math.ts').read_text())
+        evidence=[e for e in self.service.store.events(task['id'],0,100)['events'] if e['kind']=='intelligence_evidence']
+        self.assertTrue(evidence)
+        explanation=next(e for e in evidence if e['data']['kind']=='explanation')
+        artifact=self.service.execute('intelligence/artifact',{'id':explanation['data']['artifact_id'],'section':'symbols'})
+        self.assertTrue(any(row['name']=='candidate' for row in artifact['rows']))
+        manifests=[e for e in evidence if e['data']['kind']=='source_manifest']
+        self.assertTrue(manifests)
+        manifest=self.service.execute('intelligence/artifact',{'id':manifests[0]['data']['artifact_id'],'section':'files'})
+        source=next(row for row in manifest['rows'] if row['path']=='math.ts')
+        historical=self.service.execute('artifact/read',{'id':source['artifact_id'],'limit':100})
+        self.assertIn('candidate(',historical['content'])
+
+    def test_user_edits_during_run_are_not_imported_as_agent_changes(self):
+        script=Path(self.tmp.name)/'bin'/'muse'
+        script.write_text("#!"+str(Path(sys.executable).resolve())+"\n"+r"""
+import os
+from pathlib import Path
+Path('math.ts').write_text('export const candidate = 1;')
+(Path(os.environ['SHARK_TEST_WORKSPACE'])/'math.ts').write_text('export const userEdit = 2;')
+""")
+        script.chmod(script.stat().st_mode|stat.S_IEXEC)
+        task=self.service.execute('task/create',{'goal':'Do not overwrite concurrent user edits'})
+        host=AgentHost(self.service)
+        self.service.agent=host
+        with patch.dict(os.environ,{'SHARK_TEST_WORKSPACE':str(self.root)}):
+            host.start(task['id'],'','muse')
+            end=time.monotonic()+20
+            while host.active and time.monotonic()<end:
+                time.sleep(0.02)
+        result=self.service.store.get(task['id'])
+        self.assertEqual(result['status'],'failed')
+        self.assertIsNone(result['proposal_id'])
+        self.assertEqual((self.root/'math.ts').read_text(),'export const userEdit = 2;')
 
     def test_cli_edits_become_reviewable_proposal_without_touching_source(self):
         providers = {p['id']: p for p in self.service.execute('agent/providers', {})['providers']}

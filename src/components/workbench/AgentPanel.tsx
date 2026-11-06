@@ -14,12 +14,13 @@ import { useUi } from '../../stores/useUi';
 import type { ProviderStatus, TaskEvent } from '../../lib/sharkBackend';
 import { Markdown } from './Markdown';
 import { Select } from './NativeUi';
+import { WorkflowControls } from './WorkflowControls';
 import { changeKind, FileIcon, Popover, SharkMark } from './primitives';
 import { detectTasks, defaultTask } from './tasks';
 import { askAgent } from './BottomPanel';
 import { pluginPrompt } from './plugins';
 
-const STATUS: Record<string, string> = { created: 'Not started', running: 'Working', review: 'Ready to review', applied: 'Applied', completed: 'Done', cancelled: 'Stopped', interrupted: 'Interrupted', failed: 'Failed' };
+const STATUS: Record<string, string> = { created: 'Not started', running: 'Working', review: 'Ready to review', applied: 'Applied', completed: 'Done', cancelled: 'Stopped', interrupted: 'Interrupted', failed: 'Failed', paused: 'Paused', waiting_human: 'Needs your answer', blocked: 'Needs attention' };
 
 export function readiness(id: ProviderId, native: boolean, statuses: ProviderStatus[], keys: Partial<Record<ProviderId, string>>) {
   if (!native) return { ready: false, label: 'Desktop app', tone: '' };
@@ -262,6 +263,7 @@ export function AgentPanel() {
   const [pending, setPending] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [menu, setMenu] = useState<null | 'model' | 'attach' | 'mode'>(null);
+  const [autonomous, setAutonomous] = useState(true);
   const [parallel, setParallel] = useState<ProviderId[]>([]);
   const [fileQuery, setFileQuery] = useState('');
   const [menuIndex, setMenuIndex] = useState(0);
@@ -376,7 +378,7 @@ export function AgentPanel() {
     const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
     if (empty && doc.startViewTransition && !s.reduceMotion) doc.startViewTransition(start); else start();
     pinned.current = true;
-    const shared = { mode: s.mode, skills: s.skills, customSkills: s.customSkills.filter(c => s.activeCustomSkills.includes(c.id)).map(c => c.text) };
+    const shared = { workflow: autonomous && !mode.readOnly, mode: s.mode, skills: s.skills, customSkills: s.customSkills.filter(c => s.activeCustomSkills.includes(c.id)).map(c => c.text) };
     const group = parallel.length ? Math.random().toString(36).slice(2, 10) : undefined;
     const ok = await agent.run(goalText, { provider: s.provider, model, apiKey: s.keys[s.provider], effort, ...shared, group });
     if (ok && group) for (const id of parallel.filter(p => p !== s.provider && readiness(p, native, agent.providers, s.keys).ready))
@@ -450,6 +452,8 @@ export function AgentPanel() {
               <Icon size={15} /><span className="text"><span>{m.label}</span><small>{m.hint}</small></span>{m.id === s.mode && <Check size={14} />}
             </button>; })}
             <hr />
+            {!mode.readOnly && <label className="workflow-option"><input type="checkbox" checked={autonomous} onChange={e => setAutonomous(e.target.checked)} />
+              <span>Multi-step workflow<small>Keep progress, run configured checks, and ask before applying.</small></span></label>}
             <div className="group label">Skills</div>
             <div className="skill-chips">
               {BUILTIN_SKILLS.map(k => <button key={k.id} aria-pressed={s.skills.includes(k.id)} title={k.hint} onClick={() => s.set({ skills: s.skills.includes(k.id) ? s.skills.filter(x => x !== k.id) : [...s.skills, k.id] })}>{k.label}</button>)}
@@ -554,6 +558,7 @@ export function AgentPanel() {
               {streaming && <Markdown text={streaming} streaming={!s.reduceMotion} />}
               {(pending !== null || running) &&
                 <div className="working"><span className="shark-wake" aria-hidden="true"><SharkMark className="wake-fin" /></span><span className="thinking-label">{pending !== null ? 'Starting' : 'Working'}<span className="dots"><i /><i /><i /></span></span>{startedAt && running && <span className="muted elapsed">{elapsed(now / 1000 - startedAt)}</span>}</div>}
+              {task?.workflow_id && <WorkflowControls task={task} />}
               {task && agent.proposal && task.proposal_id === agent.proposal.id && <ProposalCard />}
               {task && !running && task.status === 'cancelled' && <p className="fine">Stopped.</p>}
               {task && !running && startedAt && finishedAt && <p className="fine run-time">{task.status === 'cancelled' ? 'Stopped after' : task.status === 'failed' ? 'Failed after' : 'Finished in'} {elapsed(finishedAt - startedAt)}</p>}

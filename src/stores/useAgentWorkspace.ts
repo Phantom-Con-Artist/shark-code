@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { useProjectStore } from './useProjectStore';
-import { EXPECTED_RUNTIME, restartBackend, sharkBackend, sharkWorkspace, type AgentTask, type ChangePreview, type ImpactReport, type ProviderStatus, type SlashCommand, type TaskEvent } from '../lib/sharkBackend';
+import { EXPECTED_RUNTIME, restartBackend, sharkBackend, sharkWorkspace, sharkWorkflows, type AgentTask, type ChangePreview, type ImpactReport, type ProviderStatus, type SlashCommand, type TaskEvent } from '../lib/sharkBackend';
 
-export interface RunOptions { provider: string; model: string; apiKey?: string; effort?: string; mode?: string; skills?: string[]; customSkills?: string[]; group?: string }
+export interface RunOptions { provider: string; model: string; apiKey?: string; effort?: string; mode?: string; skills?: string[]; customSkills?: string[]; group?: string; workflow?: boolean }
 interface AgentWorkspace {
   tasks: AgentTask[]; activeId: string; events: TaskEvent[]; cursor: number;
   impact: ImpactReport | null; proposal: ChangePreview | null;
@@ -42,12 +42,14 @@ export const useAgentWorkspace = create<AgentWorkspace>((set, get) => ({
     await get().poll(); await get().review();
   },
   fresh: () => set({ activeId: '', events: [], cursor: 0, proposal: null, impact: null, error: '' }),
-  run: async (goal, { provider, model, apiKey, effort, mode, skills, customSkills, group }) => {
+  run: async (goal, { provider, model, apiKey, effort, mode, skills, customSkills, group, workflow }) => {
     set({ busy: true, error: '' });
     try {
-      const task = await sharkWorkspace.createTask(goal);
+      const created = workflow ? await sharkWorkflows.create(goal, { provider, model, ...(effort ? { effort } : {}), ...(mode ? { mode } : {}), skills: skills ?? [], custom_skills: customSkills ?? [], ...(group ? { group } : {}) }) : null;
+      const task = created?.task ?? await sharkWorkspace.createTask(goal);
       set(s => ({ tasks: [task, ...s.tasks], activeId: task.id, events: [], cursor: 0, proposal: null, impact: null }));
-      await sharkWorkspace.start(task.id, { provider, model, ...(apiKey ? { api_key: apiKey } : {}), ...(effort ? { effort } : {}), mode, skills, custom_skills: customSkills, ...(group ? { group } : {}) });
+      if (created) await sharkWorkflows.start(created.workflow.id, apiKey);
+      else await sharkWorkspace.start(task.id, { provider, model, ...(apiKey ? { api_key: apiKey } : {}), ...(effort ? { effort } : {}), mode, skills, custom_skills: customSkills, ...(group ? { group } : {}) });
       await get().poll();
       return true;
     } catch (e) { set({ error: message(e) }); return false; }
@@ -55,9 +57,11 @@ export const useAgentWorkspace = create<AgentWorkspace>((set, get) => ({
   },
   spawn: async (goal, o) => {
     try {
-      const task = await sharkWorkspace.createTask(goal);
+      const created = o.workflow ? await sharkWorkflows.create(goal, { provider: o.provider, model: o.model, ...(o.effort ? { effort: o.effort } : {}), ...(o.mode ? { mode: o.mode } : {}), skills: o.skills ?? [], custom_skills: o.customSkills ?? [], ...(o.group ? { group: o.group } : {}) }) : null;
+      const task = created?.task ?? await sharkWorkspace.createTask(goal);
       set(s => ({ tasks: [task, ...s.tasks] }));
-      await sharkWorkspace.start(task.id, { provider: o.provider, model: o.model, ...(o.apiKey ? { api_key: o.apiKey } : {}), ...(o.effort ? { effort: o.effort } : {}), mode: o.mode, skills: o.skills, custom_skills: o.customSkills, group: o.group });
+      if (created) await sharkWorkflows.start(created.workflow.id, o.apiKey);
+      else await sharkWorkspace.start(task.id, { provider: o.provider, model: o.model, ...(o.apiKey ? { api_key: o.apiKey } : {}), ...(o.effort ? { effort: o.effort } : {}), mode: o.mode, skills: o.skills, custom_skills: o.customSkills, group: o.group });
     } catch (e) { set({ error: message(e) }); }
   },
   refreshTasks: async () => {

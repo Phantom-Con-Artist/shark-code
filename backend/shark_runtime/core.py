@@ -47,6 +47,7 @@ def write_json(path: Path, value: object) -> None:
 class Core:
     def __init__(self, root: Path, binary: Path):
         self.root = root.resolve(strict=True)
+        self.binary = binary.resolve(strict=True)
         self.lock = threading.RLock()
         self.sequence = 0
         self.process = subprocess.Popen(

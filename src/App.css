@@ -891,3 +891,25 @@ details.impact li small { display: block; color: var(--fg-4); font-family: var(-
 .shark-select-menu .menu-item { width: 100%; }
 .shark-select-menu .menu-item .ellipsis { flex: 1; min-width: 0; }
 .shark-select-group { padding: 6px 8px 3px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--fg-4); }
+
+.workflow-progress { padding-block: 12px; border-block: 1px solid var(--line); overflow-wrap: anywhere; }
+.workflow-progress header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; }
+.workflow-progress header strong { font-size: 13px; font-weight: 550; }
+.workflow-progress header .muted { font-size: 12px; font-variant-numeric: tabular-nums; }
+.workflow-details { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; color: var(--fg-3); font-size: 12px; }
+.workflow-details:hover { color: var(--fg); }
+.workflow-step-list { list-style: none; padding: 0; margin: 8px 0 12px; }
+.workflow-step-list li { display: flex; align-items: baseline; gap: 8px; padding-block: 6px; min-width: 0; }
+.workflow-step-list li > svg { flex-shrink: 0; align-self: center; }
+.workflow-step-list li > span:nth-child(2) { flex: 1; min-width: 0; }
+.workflow-step-list small { display: block; color: var(--fg-3); font-size: 12px; margin-top: 3px; }
+.workflow-step-list li > .muted { flex-shrink: 0; font-size: 12px; }
+.workflow-step-dot { width: 12px; flex-shrink: 0; }
+.workflow-question { display: grid; gap: 8px; margin-block: 12px; }
+.workflow-question label { font-weight: 500; }
+.workflow-question textarea { width: 100%; resize: vertical; min-height: 76px; }
+.workflow-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.workflow-actions:empty { display: none; }
+.workflow-option { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; cursor: pointer; }
+.workflow-option input { margin-top: 3px; accent-color: var(--accent); }
+.workflow-option small { display: block; margin-top: 4px; color: var(--fg-3); font-size: 12px; line-height: 1.5; }

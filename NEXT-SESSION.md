@@ -23,3 +23,32 @@ Open work as of 2026-11-06. Built and tested items are in the README.
 - Live engine tests: agy, Muse or OpenRouter only. Never Claude Code or Codex.
 - UI text: plain words, no em dashes, no buzzwords.
 - Shark is the product name; engines stay behind it.
+
+## Core intelligence implementation checkpoint
+
+The ten-category intelligence requirement is accepted as core product scope. Current
+implementation and remaining mandatory capabilities are tracked in
+[core capability status](docs/architecture/core-capability-status.md). Do not describe
+the full requirement as complete or make remaining core features paid add-ons.
+
+The built-in intelligence gateway, immutable source/report evidence, candidate-scoped
+MCP and bundled grammar/Chromium release checks are implemented. 59 backend tests,
+the frontend build, embedded-source comparison and a Linux frozen runtime/browser/
+graph smoke test pass. Native desktop click-through and other OS builds remain open.
+The new module graph links HTML script resources; the legacy Graphify graph does not
+yet share that richer module graph with the existing blast-radius UI.
+
+
+## Orchestration
+
+Runtime v6 adds durable DAG workflows, persistent candidates/checkpoints, scoped human
+gates, validation/repair loops, evidence freshness, budgets and conversation controls.
+See [orchestration](docs/architecture/orchestration.md). The user chose autonomous work
+in a private copy with decisions and final apply approval. The node canvas was only a
+question and has not been requested for implementation. External side-effect isolation,
+Windows Job Objects and checkpoint retention/quotas remain explicit limitations.
+
+Orchestration verification: all 86 backend tests, frontend production build, local UI
+interaction checks, 29-module frozen-source verification and packaged human-gate /
+fixture-engine / validation / final-apply smoke tests pass on Linux. No live Claude
+Code or Codex sessions were used. The node canvas remains a future possibility only.

@@ -136,7 +136,7 @@ class WorkspaceTests(unittest.TestCase):
         host = AgentHost(self.service)
         try:
             self.assertEqual({f.__name__ for f in host.tools('test')},
-                             {'explore', 'read_file', 'search_code', 'assess_impact', 'outline', 'check_page', 'propose_changes'})
+                             {'project_intelligence', 'static_tools', 'analyze_code', 'explore', 'read_file', 'search_code', 'assess_impact', 'outline', 'check_page', 'propose_changes'})
             task = self.service.execute('task/create', {'goal': 'Read add'})
             with patch.dict(os.environ, {}, clear=True):
                 with self.assertRaises(Fault) as error:

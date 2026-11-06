@@ -80,3 +80,58 @@ ADK uses an App, Runner, database sessions, streaming events, cancellation, and 
 Tests exercise the real ADK Runner and Graphify extractor using an offline scripted model, including exploration → source read → proposal → host application, persistent ADK sessions, and cancellation. No live provider, billed tokens, or quota savings have been measured. Language-server semantic refactoring, validation execution, process sandboxing, external CLI-agent adapters, and the in-thread follow-up steering remain next steps. The frontend now uses the shared task, event and review APIs; Graphify is reserved for agents and has no human explorer UI. Shared ContextDB selection remains deferred.
 
 Agent proposals now persist optional `summary` and `review_notes` fields alongside the proposal identity. The ADK proposal tool requires both: a plain-language behavior description and truthful verification guidance. The UI presents these before file/dependency details and optional code. Older or externally prepared tasks without a summary are shown explicitly as missing an explanation, and their UI apply control is disabled until a clear proposal is supplied.
+
+
+## Static analyzers
+
+`tools/detect` lists built-in checks and verified external binaries. `builtin` means the
+check ships in the runtime; `callable` means `tools/analyze` accepts its ID. Missing
+external tools return `status: unavailable` with setup details in `tools/detect`.
+
+```json
+{"method":"tools/analyze","params":{"tool":"python-syntax"}}
+{"method":"tools/analyze","params":{"tool":"code-stats"}}
+{"method":"tools/analyze","params":{"tool":"ast-grep","pattern":"console.log($A)","language":"javascript"}}
+```
+
+The other analyzer IDs are `semgrep`, `scc` and `ctags`. Engines access this gateway
+through MCP (`shark_static_tools`, `shark_analyze`) or API agent tools (`static_tools`,
+`analyze_code`). Desktop callers use `sharkIntelligence.analyze`.
+
+Checks inspect the current workspace, not pending edits in an engine's private copy.
+Native inventory exclusions apply. Files over 2 MiB, non-UTF-8 files and binary files
+are skipped; total input is capped at 16 MiB. Results report skipped counts. External
+tools receive a temporary source snapshot with no project execution or rewrite flags.
+Calls time out after 60 seconds and return at most 24,000 stdout bytes plus 4,000
+stderr bytes. External result paths have a `source/` prefix. Truncated stdout may be
+incomplete JSON. These checks are not a process sandbox.
+
+Semgrep uses a Shark-owned offline rule for dynamic `eval` calls with metrics and
+version checks disabled. It does not fetch remote rules or use workspace Semgrep
+configuration. It is not a comprehensive vulnerability scan. Third-party binaries
+are detected on the host and are not bundled by `build-sidecars.sh`. Python syntax
+checks and extension-based file/line/byte statistics require no additional binaries.
+
+
+## Bundled project intelligence
+
+The core gateway exposes `intelligence/status`, `index`, `structure`, `search`, `explain`,
+`dependencies`, `impact`, `quality`, `security`, `architecture`, `history`, `runtime`,
+`context` and `artifact`. Detailed schemas, methodology and outstanding product work
+are recorded in [core capability status](../architecture/core-capability-status.md).
+The intelligence API was introduced in runtime capability version 5; durable workflows require version 6.
+
+Reports carry a source revision and source-manifest artifact, plus provider, coverage,
+limitations and a retained report artifact. Retrieval is ranked lexical; security results
+are review candidates. Runtime ingestion accepts supplied measurements and does not
+collect them itself. Advisory matching requires supplied exact-version records; there
+is no bundled vulnerability database yet.
+
+Each CLI run gets a dedicated workspace Service and bridge for its candidate copy.
+Reports and immutable source artifacts are retained in the parent task's workspace
+before cleanup. A content change in the original workspace during the run prevents
+proposal creation. This is source-version coordination, not an OS process sandbox.
+
+MCP exposes `shark_project` and `shark_read_file`; API agents receive
+`project_intelligence`. Data imports remain host-only. The existing native and Graphify
+APIs stay available during migration.

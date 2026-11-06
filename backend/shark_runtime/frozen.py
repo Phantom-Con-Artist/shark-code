@@ -4,9 +4,17 @@ One executable serves two roles: the JSON-lines runtime (default) and Shark's MC
 engines start with `--mcp-server` (see bridge.mcp_launch).
 """
 import sys
+import os
 
 
 def run():
+    if getattr(sys, "frozen", False):
+        os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", "0")
+    if len(sys.argv) > 1 and sys.argv[1] == "--core-self-check":
+        from shark_runtime.selfcheck import main
+        sys.argv = [sys.argv[0], *sys.argv[2:]]
+        main()
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "--mcp-server":
         from shark_runtime.mcp_server import server
         server.run("stdio")

@@ -41,6 +41,12 @@ class BrowserTests(Base):
         with self.assertRaises(ValueError):
             self.service.execute("browser/serve", {"target": "https://example.com"})
 
+    def test_page_checks_reject_file_and_remote_targets_before_launch(self):
+        from shark_runtime.core import Fault
+        for url in ("file:///tmp/dummy", "https://example.invalid", "http://localhost@remote.invalid", "data:text/plain,dummy"):
+            with self.subTest(url=url), self.assertRaises(Fault):
+                self.service.execute("browser/check", {"url": url})
+
     def test_locate_ranks_the_rendering_line(self):
         result = self.service.execute("browser/locate", {"pick": {"id": "hero", "classes": ["big-title"], "text": "Fresh coffee daily"}})
         self.assertEqual(result["matches"][0]["path"], "index.html")
@@ -62,8 +68,24 @@ class BridgeTests(Base):
 
         self.assertEqual(post({"method": "cache/stats"}, "wrong")[0], 401)
         self.assertEqual(post({"method": "task/apply", "params": {"id": "x"}}, token)[0], 403)
+        self.assertEqual(post({"method": "intelligence/runtime/import", "params": {}}, token)[0], 403)
+        self.assertEqual(post({"method": "intelligence/advisories/import", "params": {}}, token)[0], 403)
         status, body = post({"method": "code/search", "params": {"pattern": "add", "limit": 5}}, token)
         self.assertEqual(status, 200, body)
+        status, body = post({"method": "tools/analyze", "params": {"tool": "python-syntax"}}, token)
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body["result"]["status"], "completed")
+
+    def test_project_tool_dispatches_builtin_intelligence_and_denies_imports(self):
+        from unittest.mock import patch
+        from shark_runtime.mcp_server import shark_project
+        spec=mcp_launch(self.service)
+        with patch.dict('os.environ',spec['env']):
+            report=json.loads(shark_project('structure'))
+        self.assertTrue(any(symbol['name']=='add' for symbol in report['data']['symbols']))
+        self.assertTrue(report['source_manifest_artifact_id'])
+        with self.assertRaises(ValueError):
+            shark_project('runtime/import')
 
     def test_each_cli_gets_shark_mcp_for_this_run_only(self):
         spec = {"command": "/py", "args": ["-m", "shark_runtime.mcp_server"], "env": {"SHARK_BRIDGE_TOKEN": "t"}}

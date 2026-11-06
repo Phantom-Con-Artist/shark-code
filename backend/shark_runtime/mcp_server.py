@@ -34,6 +34,48 @@ def compact(value, limit=12000) -> str:
 
 
 @server.tool()
+def shark_request_input(question: str) -> str:
+    """Ask for a missing human decision in a durable workflow. The host parks the run;
+    stop after requesting input. The answer arrives when the host resumes the step.
+    """
+    return json.dumps(call("workflow/ask", {"question": question}), ensure_ascii=False)
+
+
+@server.tool()
+def shark_project(operation: str, parameters_json: str = "{}") -> str:
+    """Shark's built-in intelligence: status, index, structure, search(query), explain(path),
+    dependencies, impact(paths), quality, security, architecture, history, runtime,
+    context(query), artifact(id, section, offset). Returns revision-bound evidence and
+    explicit limitations. Search is ranked lexical; security matches are review candidates.
+    Runtime results require supplied measurements. Use artifact to page full report sections.
+    """
+    from .codebase.gateway import READ_ONLY
+    method = "intelligence/" + operation
+    if method not in READ_ONLY:
+        raise ValueError("Choose a read-only intelligence operation")
+    params = json.loads(parameters_json)
+    if not isinstance(params, dict):
+        raise ValueError("parameters_json must be a JSON object")
+    return json.dumps(call(method, params), ensure_ascii=False, default=str)
+
+
+@server.tool()
+def shark_static_tools() -> str:
+    """List built-in and installed static analysis tools, availability and setup instructions."""
+    return compact(call("tools/detect", {}))
+
+
+@server.tool()
+def shark_analyze(tool: str, pattern: str = "", language: str = "") -> str:
+    """Analyze current source without applying edits. Tools: python-syntax, code-stats,
+    ast-grep (requires pattern and language), semgrep, scc, ctags. Semgrep uses Shark's
+    offline eval rule, not a comprehensive security ruleset. External tools must be installed.
+    External output paths are relative to a temporary source/ snapshot of the workspace.
+    """
+    return compact(call("tools/analyze", {"tool": tool, "pattern": pattern, "language": language}), limit=32000)
+
+
+@server.tool()
 def shark_graph(query: str, limit: int = 12) -> str:
     """Search Shark's code graph for symbols, files and how they connect (callers, imports). Returns nodes with paths and lines."""
     return compact(call("graph/query", {"query": query, "limit": max(1, min(limit, 40))}))
@@ -43,6 +85,12 @@ def shark_graph(query: str, limit: int = 12) -> str:
 def shark_impact(paths: list[str], depth: int = 2) -> str:
     """Blast radius: which files and symbols depend on the given project-relative paths. Check before changing shared code."""
     return compact(call("graph/impact", {"paths": paths, "depth": max(1, min(depth, 4))}))
+
+
+@server.tool()
+def shark_read_file(path: str, start_line: int = 1, limit: int = 100) -> str:
+    """Read source in this engine's candidate workspace, with content version and one-based lines."""
+    return json.dumps(call("file/read", {"path": path, "start_line": start_line, "limit": max(1, min(limit, 500))}), ensure_ascii=False)
 
 
 @server.tool()

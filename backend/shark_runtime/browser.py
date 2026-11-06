@@ -169,12 +169,13 @@ def serve(root: Path, target: str = "workspace") -> dict:
     return {"url": base + path, "base": base, "target": target}
 
 
-def close():
+def close(root: Path | None = None):
     with LOCK:
-        for server, _ in SERVERS.values():
-            server.shutdown()
-            server.server_close()
-        SERVERS.clear()
+        for key, (server, _) in list(SERVERS.items()):
+            if root is None or key[0] == str(root):
+                server.shutdown()
+                server.server_close()
+                SERVERS.pop(key, None)
 
 
 SOURCE_EXT = {".html", ".htm", ".jsx", ".tsx", ".js", ".ts", ".vue", ".svelte", ".astro", ".css", ".scss", ".md", ".mdx", ".php", ".erb", ".hbs"}
@@ -225,6 +226,15 @@ def locate(root: Path, pick: dict, limit: int = 8) -> dict:
 
 def check(url: str, timeout_ms: int = 15000) -> dict:
     """Headless page check through Playwright: console errors, failed requests, title and a screenshot."""
+    from .core import Fault
+    try:
+        parts = urllib.parse.urlsplit(url)
+        allowed = (parts.scheme in {"http", "https"} and parts.hostname in {"localhost", "127.0.0.1", "::1"}
+                   and not parts.username and not parts.password)
+    except (TypeError, ValueError):
+        allowed = False
+    if not allowed:
+        raise Fault("invalid_params", "Page checks require a localhost HTTP(S) URL")
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
