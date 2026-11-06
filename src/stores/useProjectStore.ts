@@ -52,6 +52,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       cleanPath(path); if (to) cleanPath(to);
       if (kind !== 'native') throw new Error('Folder creation, rename and trash are available in the desktop workspace.');
+      if (operation === 'rename' || operation === 'trash') {
+        const {request} = await import('../lib/sharkBackend');
+        const notebooks = get().entries.filter(e => !e.directory && /\.ipynb$/i.test(e.path) && (e.path === path || e.path.startsWith(path + '/')));
+        for (const file of notebooks) await request('notebook/shutdown', {path: file.path});
+      }
       await invoke('workspace_mutate', {operation, path, to: to ?? null, expectedRoot: root});
       if (get().root !== root) return;
       const within = (p: string) => p === path || p.startsWith(path + '/');

@@ -8,7 +8,7 @@ type Output = { output_type: string; text?: string | string[]; name?: string; en
 type Cell = { id: string; cell_type: 'code' | 'markdown' | 'raw'; source: string | string[]; metadata: Record<string, unknown>; outputs?: Output[]; execution_count?: number | null; [key: string]: unknown };
 type Notebook = { nbformat: number; nbformat_minor: number; cells: Cell[]; metadata: Record<string, unknown>; [key: string]: unknown };
 type Job = { id: string; path: string; status: string; error: string | null; cells: Record<string, { outputs: Output[]; execution_count: number | null; status: string }> };
-const running = new Map<string, string>();
+const running = new Map<string, {id: string; sources: Record<string, string>}>();
 const text = (value: unknown): string => Array.isArray(value) ? value.join('') : typeof value === 'string' ? value : '';
 const plain = (value: unknown) => text(value).replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
 function parse(content: string): Notebook {
@@ -31,12 +31,12 @@ export default function NotebookEditor({ file }: { file: OpenFile }) {
   const [kernels, setKernels] = useState<{name: string; display_name: string}[]>([]);
   const [kernel, setKernel] = useState('shark-python');
   const [error, setError] = useState('');
-  const [jobId, setJobId] = useState(() => running.get(root + ':' + file.path) ?? '');
+  const [jobId, setJobId] = useState(() => running.get(root + ':' + file.path)?.id ?? '');
   const [busy, setBusy] = useState(!!jobId);
   const [status, setStatus] = useState('Ready');
   const [markdownEdit, setMarkdownEdit] = useState<string[]>([]);
   const starting = useRef(false);
-  const sourceAtRun = useRef<Record<string, string>>({});
+  const sourceAtRun = useRef<Record<string, string>>(running.get(root + ':' + file.path)?.sources ?? {});
   const nb = parsed.nb;
   const change = (next: Notebook) => edit(file.path, JSON.stringify(next, null, 1) + '\n');
   useEffect(() => { if (native) void request<{kernels: typeof kernels}>('notebook/kernels').then(r => setKernels(r.kernels)).catch(e => setError(String(e))); }, [native, root]);
@@ -76,7 +76,7 @@ export default function NotebookEditor({ file }: { file: OpenFile }) {
     sourceAtRun.current = Object.fromEntries(nb.cells.map(c => [c.id, text(c.source)]));
     try {
       const job = await request<Job>('notebook/execute', {path: file.path, notebook: nb, kernel, ...(cellIds ? {cell_ids: cellIds} : {})});
-      running.set(root + ':' + file.path, job.id); setJobId(job.id);
+      running.set(root + ':' + file.path, {id: job.id, sources: sourceAtRun.current}); setJobId(job.id);
     } catch (e) { setError(String(e)); setBusy(false); setStatus('Ready'); }
     finally { starting.current = false; }
   };
