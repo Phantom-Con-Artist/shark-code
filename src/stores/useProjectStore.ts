@@ -39,7 +39,7 @@ async function scanFolder(base: DirectoryHandle, prefix = '', depth = 0): Promis
 interface ProjectState {
   refreshFromDisk(paths: string[]): Promise<void>;
   name: string; root: string; kind: 'browser' | 'folder' | 'native'; entries: ProjectEntry[]; tabs: OpenFile[]; activePath: string; error: string; notice: string; busy: boolean;
-  initialize(): Promise<void>; openFolder(path?: string): Promise<void>; openFile(path: string): Promise<void>; edit(path: string, content: string): void; save(path: string): Promise<void>; createFile(path: string): Promise<void>; closeFile(path: string, force?: boolean): void; reloadFile(path: string): Promise<void>; clearError(): void;
+  initialize(): Promise<void>; openFolder(path?: string): Promise<void>; pickFolder(): Promise<void>; openFile(path: string): Promise<void>; edit(path: string, content: string): void; save(path: string): Promise<void>; createFile(path: string): Promise<void>; closeFile(path: string, force?: boolean): void; reloadFile(path: string): Promise<void>; clearError(): void;
   history: string[]; historyIndex: number; navigating: boolean; navigate(delta: -1 | 1): Promise<void>;
   refresh(): Promise<void>; searchText(query: string): Promise<SearchHit[]>; readText(path: string): Promise<string | null>;
 }
@@ -93,6 +93,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }
     } catch (e) { if (!(e instanceof DOMException && e.name === 'AbortError')) set({ error: String(e) }); }
     finally { set({ busy: false }); }
+  },
+  pickFolder: async () => {
+    if (!isTauri()) { await get().openFolder(); return; }
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const selected = await open({ directory: true, multiple: false, title: 'Open Folder' });
+      if (typeof selected === 'string') await get().openFolder(selected);
+    } catch (e) { set({ error: String(e) }); }
   },
   openFile: async path => {
     const record = () => { const st = get(); if (st.navigating || st.history[st.historyIndex] === path) return; const history = [...st.history.slice(0, st.historyIndex + 1), path].slice(-50); set({ history, historyIndex: history.length - 1 }); };

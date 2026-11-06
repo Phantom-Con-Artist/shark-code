@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { isTauri } from '@tauri-apps/api/core';
 import { ChevronRight, ChevronsDownUp, FilePlus2, FolderOpen, Hammer, Play, Plus, RefreshCw, Search, Sparkles, TestTube2, Trash2, Wrench, X } from 'lucide-react';
 import { useAgentWorkspace } from '../../stores/useAgentWorkspace';
 import { PluginManager, PluginView, usePlugins } from './plugins';
@@ -152,7 +151,7 @@ function Explorer() {
   const git = useGit();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState('');
-  const [creating, setCreating] = useState<null | 'file' | 'folder'>(null);
+  const [creating, setCreating] = useState<null | 'file'>(null);
   const [draft, setDraft] = useState('');
   const treeRef = useRef<HTMLDivElement>(null);
 
@@ -201,11 +200,11 @@ function Explorer() {
   async function submitCreate(e: React.FormEvent) {
     e.preventDefault();
     const value = draft.trim(); if (!value) return;
-    if (creating === 'folder') await project.openFolder(value); else await project.createFile(value);
-    if (!useProjectStore.getState().error) { setCreating(null); setDraft(''); if (creating === 'file') useUi.getState().set({ editorView: 'file' }); }
+    await project.createFile(value);
+    if (!useProjectStore.getState().error) { setCreating(null); setDraft(''); useUi.getState().set({ editorView: 'file' }); }
   }
 
-  const openFolder = () => { if (isTauri()) { setDraft(''); setCreating('folder'); } else void project.openFolder(); };
+  const openFolder = () => { useSettings.getState().set({ sidebarOpen: true, sidebarView: 'files' }); void project.pickFolder(); };
 
   return <div className="explorer">
     <div className="project-row">
@@ -217,8 +216,8 @@ function Explorer() {
     </div>
     {creating && <form className="inline-create" onSubmit={submitCreate}>
       <input className="field" autoFocus value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') setCreating(null); }}
-        placeholder={creating === 'folder' ? '/absolute/path/to/project' : 'src/new-file.ts'} aria-label={creating === 'folder' ? 'Folder path to open' : 'New file path'} />
-      <p>{creating === 'folder' ? 'Enter opens the folder · Esc cancels' : 'Enter creates the file · Esc cancels'}</p>
+        placeholder="src/new-file.ts" aria-label="New file path" />
+      <p>Enter creates the file · Esc cancels</p>
     </form>}
     <div className="filter">
       <Search size={13} />

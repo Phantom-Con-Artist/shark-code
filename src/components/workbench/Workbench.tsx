@@ -106,7 +106,7 @@ export function Workbench() {
     { label: 'File', items: [
       { label: 'New Chat', keys: `${mod} N`, run: newChat },
       { label: 'New File…', run: () => { s.set({ sidebarOpen: true, sidebarView: 'files' }); setTimeout(() => document.querySelector<HTMLButtonElement>('[aria-label="New file"]')?.click()); } },
-      { label: 'Open Folder…', run: () => { s.set({ sidebarOpen: true, sidebarView: 'files' }); if (!isTauri()) void project.openFolder(); else setTimeout(() => document.querySelector<HTMLButtonElement>('[aria-label="Open folder"]')?.click()); } },
+      { label: 'Open Folder…', run: () => { s.set({ sidebarOpen: true, sidebarView: 'files' }); void project.pickFolder(); } },
       { label: 'Go to File…', keys: `${mod} P`, run: () => ui.open('files') }, 'separator',
       { label: 'Save', keys: `${mod} S`, run: () => { if (project.activePath) void project.save(project.activePath); }, disabled: !project.activePath },
       { label: 'Save All', run: saveAll, disabled: !project.tabs.some(t => t.content !== t.saved) },
@@ -160,7 +160,9 @@ export function Workbench() {
       { label: s.view === 'shark' ? 'Code View (editor first)' : 'Shark View (agent first)', keys: `${mod} ⇧ M`, run: () => s.set({ view: s.view === 'shark' ? 'code' : 'shark', editorOpen: true }) },
     ] },
     { label: 'Terminal', items: [
+      { label: 'New Terminal', run: async () => { s.set({ terminalOpen: true }); ui.set({ panelTab: 'terminal' }); const { useTerminals } = await import('../../stores/useTerminals'); useTerminals.getState().add(); } },
       { label: 'Toggle Terminal', keys: `${mod} J`, run: () => togglePanel('terminal') },
+      { label: 'Close Terminal', run: async () => { const { useTerminals } = await import('../../stores/useTerminals'); const t = useTerminals.getState(); if (t.activeId) t.remove(t.activeId); } },
       { label: 'Clear Terminal', run: () => void import('./Terminal').then(m => m.clearTerminal()) }, 'separator',
       { label: 'Run Build Task', keys: `${mod} ⇧ B`, run: () => void runDefault('build') },
       { label: 'Run Tests', run: () => void runDefault('test') },

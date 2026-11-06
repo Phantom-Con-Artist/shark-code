@@ -26,6 +26,7 @@ keyring = "3"
 ignore = "0.4"
 walkdir = "2"
 regex = "1"
+tauri-plugin-dialog = "2.8.4"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
